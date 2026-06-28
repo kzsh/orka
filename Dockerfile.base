@@ -1,0 +1,46 @@
+FROM oven/bun:1.3.14
+
+# Install basic development tools and iptables/ipset
+#
+# This layer rarely changes and is built as a separate base image so that a
+# --no-cache rebuild (to pull the latest pi) does not force a full re-fetch of
+# these apt dependencies.
+RUN apt-get update && apt-get install -y \
+  aggregate \
+  file \
+  bc \
+  binutils \
+  bubblewrap \
+  cmake \
+  curl \
+  direnv \
+  dnsutils \
+  fd-find \
+  fzf \
+  gh \
+  git \
+  gnupg2 \
+  imagemagick \
+  iproute2 \
+  ipset \
+  iptables \
+  jq \
+  less \
+  lsof \
+  man-db \
+  moreutils \
+  ninja-build \
+  parallel \
+  poppler-utils \
+  procps \
+  pv \
+  python3 \
+  ripgrep \
+  socat \
+  sqlite3 \
+  strace \
+  sudo \
+  unzip \
+  wget \
+  xxd \
+  xz-utils

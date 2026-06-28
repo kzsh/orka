@@ -1,0 +1,78 @@
+# pita environment definitions
+#
+# Copy this file to ${XDG_CONFIG_HOME:-~/.config}/pita/environments.yaml
+# and adjust paths to match your system.
+#
+# Each environment is a named set of Docker flags that pita appends when
+# invoked with --env <name>.
+#
+# volumes  - list of host_path:container_path pairs (Docker --volume).
+# env      - list of KEY=VALUE pairs (Docker --env). Optional.
+#
+# A leading ~ is expanded to $HOME at runtime in both volumes and env
+# values. Shell variables (e.g. $PATH, $JAVA_HOME) in env values are
+# also expanded from the host environment at runtime.
+#
+# Usage:
+#   pita --preset rust      # mounts cargo + rustup into the container
+#   pita --preset list      # prints available preset names
+#   pita --env FOO=bar      # inject an arbitrary env var
+
+environments:
+  xtool:
+    volumes:
+      - ~/.config/xtool:~/.config/xtool
+      - /usr/local/bin:~/.local/bin
+      - ~/.local/share/swiftly:~/.local/share/swiftly
+      - /lib:/lib
+      - /usr/lib:/usr/lib
+
+  bun:
+    volumes:
+      - ~/.bun/:~/.bun/
+      - ~/.local/bin/:~/.local/bin/
+
+  # go paths are read from `go env` at install time; adjust if your
+  # GOROOT, GOPATH, or GOCACHE live somewhere non-standard.
+  go:
+    volumes:
+      - /usr/local/go:/usr/local/go
+      - ~/go:~/go
+      - ~/.cache/go-build:~/.cache/go-build
+      - ~/.config/go:~/.config/go
+    env:
+      - PATH=/usr/local/go/bin:~/go/bin:$PATH
+
+  rust:
+    volumes:
+      - ~/.cargo/:~/.cargo/
+      - ~/.rustup/:~/.rustup/
+
+  godot:
+    volumes:
+      - ~/packages/godot:~/packages/godot
+      - ~/.config/godot:~/.config/godot
+      - ~/.local/share/godot:~/.local/share/godot
+      - /lib:/lib
+      - /usr/lib:/usr/lib
+      - /usr/share/X11/xkb:/usr/share/X11/xkb
+
+  steam:
+    volumes:
+      - ~/.steam/steam/steamapps/common:~/.steam/steam/steamapps/common
+
+  python:
+    volumes:
+      - ~/.local/share/uv/python:~/.local/share/uv/python
+      - ~/.cache/uv:~/.cache/uv
+      - ~/.local/share/uv/tools:~/.local/share/uv/tools
+
+  ue5:
+    volumes:
+      - ~/UnrealEngine:~/UnrealEngine
+      - ~/packages/ue5:~/packages/ue5
+      - /usr/bin/:/usr/bin
+      - /usr/share/doc/dotnet-sdk-9.0:/usr/share/doc/dotnet-sdk-9.0
+      - /usr/share/dotnet:/usr/share/dotnet
+      - /lib:/lib
+      - /usr/lib:/usr/lib
