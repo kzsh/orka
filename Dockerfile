@@ -29,8 +29,10 @@ ENV BUN_INSTALL="/home/$UNAME/.bun"
 ENV BUN_INSTALL_BIN="/home/$UNAME/.bun/bin"
 ENV PATH="/home/$UNAME/.bun/bin:$PATH"
 
-COPY ./entrypoint.sh /usr/local/bin/entrypoint.sh
+# Install pi before copying entrypoint.sh so that changes to the
+# entrypoint script don't bust the expensive bun install cache layer.
 RUN bun install --global @earendil-works/pi-coding-agent@${VERSION} && \
     which pi
 
+COPY ./entrypoint.sh /usr/local/bin/entrypoint.sh
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
