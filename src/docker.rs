@@ -234,7 +234,16 @@ fn print_dry_run(label: &str, args: &[String]) {
     println!("[DRY_RUN] {label}:");
     let line = args
         .iter()
-        .map(|a| shell_quote(a))
+        .enumerate()
+        .map(|(i, a)| {
+            let prev_is_env = i > 0 && args[i - 1] == "--env";
+            if prev_is_env {
+                if let Some(eq) = a.find('=') {
+                    return format!("{}=<redacted>", &a[..eq]);
+                }
+            }
+            shell_quote(a)
+        })
         .collect::<Vec<_>>()
         .join(" \\\n  ");
     println!("  {line}");
