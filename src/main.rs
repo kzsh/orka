@@ -102,6 +102,7 @@ fn run() -> Result<(), String> {
         debug: cli.debug,
         ephemeral: cli.ephemeral,
         pi_version: cli.pi_version,
+        with_browser: cli.with_browser,
         volumes,
         env_vars,
         workdir,

@@ -38,6 +38,10 @@ pub struct Cli {
     #[arg(long)]
     pub ephemeral: bool,
 
+    /// Install the agent-browser extension and its Chromium dependency into the image.
+    #[arg(long)]
+    pub with_browser: bool,
+
     /// Arguments forwarded verbatim to the container (passed to `pi`).
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     pub container_args: Vec<String>,
