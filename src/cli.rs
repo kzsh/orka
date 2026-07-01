@@ -42,6 +42,11 @@ pub struct Cli {
     #[arg(long)]
     pub with_browser: bool,
 
+    /// Mount an empty tmpfs over ~/.pi/agent/extensions inside the container,
+    /// hiding all auto-discovered extensions for this run.
+    #[arg(long, short = 'N')]
+    pub no_extensions: bool,
+
     /// Arguments forwarded verbatim to the container (passed to `pi`).
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     pub container_args: Vec<String>,

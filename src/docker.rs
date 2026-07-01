@@ -24,6 +24,8 @@ pub struct RunConfig {
     pub pi_version: Option<String>,
     /// When true, passes `INSTALL_AGENT_BROWSER=true` to the main image build.
     pub with_browser: bool,
+    /// When true, mounts a tmpfs over ~/.pi/agent/extensions to hide all extensions.
+    pub no_extensions: bool,
     /// Resolved `(host_path, container_path)` volume pairs.
     pub volumes: Vec<(String, String)>,
     /// Resolved `(key, value)` environment variable pairs.
@@ -191,6 +193,14 @@ fn run_command_args(
     // Pi config/data dir is always mounted so settings persist across runs.
     cmd.push(s("--volume"));
     cmd.push(format!("{pi_dir}:{pi_dir}"));
+
+    // Shadow the extensions directory with an empty tmpfs so no auto-discovered
+    // extensions load. The tmpfs mount is more specific than the parent bind
+    // mount, so it wins regardless of order.
+    if cfg.no_extensions {
+        cmd.push(s("--tmpfs"));
+        cmd.push(format!("{pi_dir}/agent/extensions"));
+    }
 
     for (host, container) in &cfg.volumes {
         cmd.push(s("--volume"));
