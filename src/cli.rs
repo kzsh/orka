@@ -38,9 +38,9 @@ pub struct Cli {
     #[arg(long)]
     pub ephemeral: bool,
 
-    /// Install the agent-browser extension and its Chromium dependency into the image.
+    /// Skip installing the agent-browser extension and Chromium (browser support is on by default).
     #[arg(long)]
-    pub with_browser: bool,
+    pub no_browser: bool,
 
     /// Mount an empty tmpfs over ~/.pi/agent/extensions inside the container,
     /// hiding all auto-discovered extensions for this run.

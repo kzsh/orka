@@ -22,8 +22,8 @@ pub struct RunConfig {
     pub debug: bool,
     pub ephemeral: bool,
     pub pi_version: Option<String>,
-    /// When true, passes `INSTALL_AGENT_BROWSER=true` to the main image build.
-    pub with_browser: bool,
+    /// When true, skips passing `INSTALL_AGENT_BROWSER=true` to the main image build.
+    pub no_browser: bool,
     /// When true, mounts a tmpfs over ~/.pi/agent/extensions to hide all extensions.
     pub no_extensions: bool,
     /// Resolved `(host_path, container_path)` volume pairs.
@@ -65,12 +65,7 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
 
     let base_ref = format!("{BASE_CONTAINER_NAME}:latest");
     let tag = cfg.pi_version.as_deref().unwrap_or("latest");
-    let image_tag = if cfg.with_browser {
-        format!("browser-{tag}")
-    } else {
-        tag.to_string()
-    };
-    let main_ref = format!("{CONTAINER_NAME}:{image_tag}");
+    let main_ref = format!("{CONTAINER_NAME}:{tag}");
 
     let uid = current_uid();
     let gid = current_gid();
@@ -147,7 +142,7 @@ fn build_main_command(
         cmd.push(s("--build-arg"));
         cmd.push(format!("VERSION={ver}"));
     }
-    if cfg.with_browser {
+    if !cfg.no_browser {
         cmd.push(s("--build-arg"));
         cmd.push(s("INSTALL_AGENT_BROWSER=true"));
     }
