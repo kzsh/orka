@@ -1,0 +1,65 @@
+# orka environment definitions
+#
+# Copy this file to ${XDG_CONFIG_HOME:-~/.config}/orka/environments.yaml
+# and adjust paths to match your system.
+#
+# Each environment is a named set of Docker flags that orka appends when
+# invoked with --env <name>.
+#
+# volumes  - list of host_path:container_path pairs (Docker --volume).
+# env      - list of KEY=VALUE pairs (Docker --env). Optional.
+#
+# A leading ~ is expanded to $HOME at runtime in both volumes and env
+# values. Shell variables (e.g. $PATH, $JAVA_HOME) in env values are
+# also expanded from the host environment at runtime.
+#
+# Usage:
+#   orka --preset rust      # mounts cargo + rustup into the container
+#   orka --preset list      # prints available preset names
+#   orka --env FOO=bar      # inject an arbitrary env var
+
+environments:
+  bun:
+    volumes:
+      - ~/.bun/:~/.bun/
+      - ~/.local/bin/:~/.local/bin/
+
+  # go paths are read from `go env` at install time; adjust if your
+  # GOROOT, GOPATH, or GOCACHE live somewhere non-standard.
+  go:
+    volumes:
+      - /usr/local/go:/usr/local/go
+      - ~/go:~/go
+      - ~/.cache/go-build:~/.cache/go-build
+      - ~/.config/go:~/.config/go
+    env:
+      - PATH=/usr/local/go/bin:~/go/bin:$PATH
+
+  rust:
+    volumes:
+      - ~/.cargo/:~/.cargo/
+      - ~/.rustup/:~/.rustup/
+
+  godot:
+    volumes:
+      - ~/packages/godot:~/packages/godot
+      - ~/.config/godot:~/.config/godot
+      - ~/.local/share/godot:~/.local/share/godot
+      - /lib:/lib
+      - /usr/lib:/usr/lib
+      - /usr/share/X11/xkb:/usr/share/X11/xkb
+
+  uv:
+    volumes:
+      - ~/.local/bin/uv:~/.local/bin/uv
+      - ~/.local/share/uv:~/.local/share/uv
+      - ~/.cache/uv:~/.cache/uv
+    env:
+      - PATH=~/.local/bin:$PATH
+
+  python:
+    volumes:
+      - ~/.local/share/uv/python:~/.local/share/uv/python
+      - ~/.cache/uv:~/.cache/uv
+      - ~/.local/share/uv/tools:~/.local/share/uv/tools
+
