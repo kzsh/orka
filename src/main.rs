@@ -28,7 +28,7 @@ fn run() -> Result<(), String> {
         .unwrap_or_else(|_| home.clone());
 
     // --preset list: print available preset names and exit.
-    if cli.preset.as_deref() == Some("list") {
+    if cli.preset.iter().any(|p| p == "list") {
         let cfg_path = config::config_path();
         require_config_file(&cfg_path)?;
         let cfg = config::load(&cfg_path)?;
@@ -56,37 +56,40 @@ fn run() -> Result<(), String> {
         volumes.push((agents_dir.clone(), agents_dir));
     }
 
-    // Collect env vars from the preset (if any), then from --env flags.
+    // Collect volumes and env vars from all presets (if any), then from --env flags.
     let mut env_vars: Vec<(String, String)> = Vec::new();
 
-    if let Some(ref preset_name) = cli.preset {
+    if !cli.preset.is_empty() {
         let cfg_path = config::config_path();
         require_config_file(&cfg_path)?;
         let cfg = config::load(&cfg_path)?;
 
-        let env = cfg.environments.get(preset_name).ok_or_else(|| {
-            let mut available: Vec<&str> = cfg.environments.keys().map(String::as_str).collect();
-            available.sort_unstable();
-            format!(
-                "unknown preset: {preset_name}\navailable presets: {}",
-                available.join(", ")
-            )
-        })?;
+        for preset_name in &cli.preset {
+            let env = cfg.environments.get(preset_name).ok_or_else(|| {
+                let mut available: Vec<&str> =
+                    cfg.environments.keys().map(String::as_str).collect();
+                available.sort_unstable();
+                format!(
+                    "unknown preset: {preset_name}\navailable presets: {}",
+                    available.join(", ")
+                )
+            })?;
 
-        for raw in &env.volumes {
-            let (host_raw, container_raw) = split_once_colon(raw);
-            let host = expand::expand_tilde(host_raw);
-            let container = expand::expand_tilde(container_raw);
-            let host_real = fs::canonicalize(&host)
-                .map_err(|_| format!("preset volume path does not exist: {host}"))?
-                .to_string_lossy()
-                .to_string();
-            volumes.push((host_real, container));
-        }
+            for raw in &env.volumes {
+                let (host_raw, container_raw) = split_once_colon(raw);
+                let host = expand::expand_tilde(host_raw);
+                let container = expand::expand_tilde(container_raw);
+                let host_real = fs::canonicalize(&host)
+                    .map_err(|_| format!("preset volume path does not exist: {host}"))?
+                    .to_string_lossy()
+                    .to_string();
+                volumes.push((host_real, container));
+            }
 
-        for raw in &env.env {
-            let (key, val_raw) = split_once_eq(raw);
-            env_vars.push((key.to_string(), expand::expand_value(val_raw)));
+            for raw in &env.env {
+                let (key, val_raw) = split_once_eq(raw);
+                env_vars.push((key.to_string(), expand::expand_value(val_raw)));
+            }
         }
     }
 

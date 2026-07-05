@@ -4,10 +4,10 @@ use clap::Parser;
 #[command(name = "pita", about = "Pi in a container")]
 #[command(disable_version_flag = true)]
 pub struct Cli {
-    /// Select a named preset from environments.yaml.
+    /// Select a named preset from environments.yaml. Repeatable.
     /// Use --preset list to print available preset names.
     #[arg(long, value_name = "NAME")]
-    pub preset: Option<String>,
+    pub preset: Vec<String>,
 
     /// Inject an arbitrary env var into the container (KEY=VALUE). Repeatable.
     #[arg(long, value_name = "KEY=VALUE")]
