@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Push dist/ artifacts to a GitHub release on kzsh/pita.
+# Push dist/ artifacts to a GitHub release on kzsh/pita, then update public-repo.
 #
 # The release tag is derived from the version in Cargo.toml (prefixed with v).
 # Exits cleanly if that release already exists.
@@ -31,12 +31,24 @@ if gh release view "$TAG" --repo "$REPO" &>/dev/null; then
     exit 0
 fi
 
-mapfile -t artifacts < <(find "$DIST" -maxdepth 1 -name "pita-$VERSION-*" -type f | sort)
+mapfile -t versioned < <(find "$DIST" -maxdepth 1 -name "pita-$VERSION-*" -type f | sort)
 
-if [[ ${#artifacts[@]} -eq 0 ]]; then
+if [[ ${#versioned[@]} -eq 0 ]]; then
     echo "error: no artifacts found in $DIST/. Run scripts/build-matrix.sh first."
     exit 1
 fi
+
+# Create unversioned copies alongside the versioned ones for the stable
+# /releases/latest/download/<name> URLs.
+unversioned=()
+for f in "${versioned[@]}"; do
+    base="$(basename "$f")"
+    stripped="$DIST/${base/$VERSION-/}"  # pita-0.0.1-x86_64-... -> pita-x86_64-...
+    cp "$f" "$stripped"
+    unversioned+=("$stripped")
+done
+
+artifacts=("${versioned[@]}" "${unversioned[@]}")
 
 echo "Tag:        $TAG"
 echo "Repo:       $REPO"
@@ -53,3 +65,6 @@ gh release create "$TAG" \
     "${artifacts[@]}"
 
 echo "Released: https://github.com/$REPO/releases/tag/$TAG"
+echo ""
+
+./scripts/update-public-repo.sh
