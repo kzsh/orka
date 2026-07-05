@@ -65,6 +65,3 @@ gh release create "$TAG" \
     "${artifacts[@]}"
 
 echo "Released: https://github.com/$REPO/releases/tag/$TAG"
-echo ""
-
-./scripts/update-public-repo.sh

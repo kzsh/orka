@@ -11,10 +11,8 @@ set -euo pipefail
 VERSION="$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')"
 TAG="v$VERSION"
 
-cp config/environments.yaml public-repo/config/environments.yaml
-
 cd public-repo
-git add config/environments.yaml
+git add -A
 if git diff --cached --quiet; then
     echo "public-repo: nothing changed, skipping commit."
 else
