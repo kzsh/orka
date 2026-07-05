@@ -1,8 +1,7 @@
 use clap::Parser;
 
 #[derive(Parser, Debug)]
-#[command(name = "pita", about = "Pi in a container")]
-#[command(disable_version_flag = true)]
+#[command(name = "pita", about = "Pi in a container", version)]
 pub struct Cli {
     /// Select a named preset from environments.yaml. Repeatable.
     /// Use --preset list to print available preset names.
