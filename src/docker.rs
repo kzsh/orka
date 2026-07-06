@@ -181,6 +181,8 @@ fn run_command_args(
     if cfg.ephemeral {
         cmd.push(s("--rm"));
     }
+    cmd.push(s("--cap-drop=ALL"));
+    cmd.push(s("--security-opt=no-new-privileges"));
     if cfg.debug {
         cmd.push(s("--debug"));
     }
