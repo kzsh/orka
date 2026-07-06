@@ -1,4 +1,7 @@
 #!/bin/bash
+# Always prepend the isolated pi install dir first so it wins over any
+# PATH injected by a --env flag from a preset (e.g. the uv preset).
+export PATH="/opt/pi-bun/bin:$PATH"
 echo "====================="
 echo "Pi in a container"
 echo "====================="

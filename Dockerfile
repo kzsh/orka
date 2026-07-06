@@ -60,6 +60,11 @@ RUN groupadd -g $USER_GID -o $UNAME && \
     useradd -m -u $USER_UID -g $USER_GID -o -s /bin/bash $UNAME
 
 RUN chown -R "$USER_UID:$USER_GID" /home/$UNAME
+
+# Isolated install root for pi and its bun globals.  Lives outside $HOME so
+# that mounted presets (e.g. bun, uv) can never shadow it.
+RUN mkdir -p /opt/pi-bun && chown "$USER_UID:$USER_GID" /opt/pi-bun
+
 WORKDIR "/home/$UNAME"
 
 # Switch to the non-root user
@@ -68,10 +73,11 @@ USER $UNAME
 # Ensure HOME is correct for our user (base image sets it for the bun user)
 ENV HOME="/home/$UNAME"
 
-# Point bun's global install to user-writable locations
-ENV BUN_INSTALL="/home/$UNAME/.bun"
-ENV BUN_INSTALL_BIN="/home/$UNAME/.bun/bin"
-ENV PATH="/home/$UNAME/.bun/bin:$PATH"
+# Point bun's global install to the isolated pi directory so it is never
+# reachable from a user-mounted ~/.bun or a preset-injected PATH.
+ENV BUN_INSTALL="/opt/pi-bun"
+ENV BUN_INSTALL_BIN="/opt/pi-bun/bin"
+ENV PATH="/opt/pi-bun/bin:$PATH"
 
 # Install pi before copying entrypoint.sh so that changes to the
 # entrypoint script don't bust the expensive bun install cache layer.
