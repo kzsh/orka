@@ -37,8 +37,8 @@ pub struct RunConfig {
 /// Write the embedded Dockerfiles and entrypoint into a fresh temp directory
 /// and return it.  The directory is the Docker build context.
 fn write_build_context() -> Result<TempDir, String> {
-    let dir = tempfile::tempdir()
-        .map_err(|e| format!("failed to create temp build context: {e}"))?;
+    let dir =
+        tempfile::tempdir().map_err(|e| format!("failed to create temp build context: {e}"))?;
 
     fs::write(dir.path().join("Dockerfile"), DOCKERFILE)
         .map_err(|e| format!("failed to write Dockerfile to build context: {e}"))?;
@@ -167,8 +167,13 @@ fn run_command_args(
 ) -> Result<Vec<String>, String> {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
     let pi_dir = format!("{home}/.pi");
-    fs::create_dir_all(&pi_dir)
-        .map_err(|e| format!("failed to create {pi_dir}: {e}"))?;
+    fs::create_dir_all(&pi_dir).map_err(|e| format!("failed to create {pi_dir}: {e}"))?;
+
+    let agent_browser_dir = format!("{home}/.agent-browser");
+    if !cfg.no_browser {
+        fs::create_dir_all(&agent_browser_dir)
+            .map_err(|e| format!("failed to create {agent_browser_dir}: {e}"))?;
+    }
 
     let mut cmd = vec![
         s("docker"),
@@ -191,6 +196,13 @@ fn run_command_args(
     cmd.push(s("--volume"));
     cmd.push(format!("{pi_dir}:{pi_dir}"));
 
+    // When the browser extension is included, mount its data dir so screenshots
+    // and other browser output are accessible on the host.
+    if !cfg.no_browser {
+        cmd.push(s("--volume"));
+        cmd.push(format!("{agent_browser_dir}:{agent_browser_dir}"));
+    }
+
     // Shadow the extensions directory with an empty tmpfs so no auto-discovered
     // extensions load. The tmpfs mount is more specific than the parent bind
     // mount, so it wins regardless of order.
@@ -211,10 +223,7 @@ fn run_command_args(
     // Always forward the three API keys from the host environment.
     for key in ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPEN_ROUTER_KEY"] {
         cmd.push(s("--env"));
-        cmd.push(format!(
-            "{key}={}",
-            std::env::var(key).unwrap_or_default()
-        ));
+        cmd.push(format!("{key}={}", std::env::var(key).unwrap_or_default()));
     }
 
     cmd.push(s("--workdir"));
@@ -272,9 +281,25 @@ fn print_dry_run(label: &str, args: &[String]) {
 /// Minimal shell quoting: wrap in single quotes when the value contains
 /// characters that would be interpreted by a shell.
 fn shell_quote(s: &str) -> String {
-    if s.chars()
-        .any(|c| matches!(c, ' ' | '\t' | '\n' | '"' | '\'' | '\\' | '$' | '!' | '&' | '|' | ';' | '(' | ')' | '<' | '>'))
-    {
+    if s.chars().any(|c| {
+        matches!(
+            c,
+            ' ' | '\t'
+                | '\n'
+                | '"'
+                | '\''
+                | '\\'
+                | '$'
+                | '!'
+                | '&'
+                | '|'
+                | ';'
+                | '('
+                | ')'
+                | '<'
+                | '>'
+        )
+    }) {
         format!("'{}'", s.replace('\'', "'\\''"))
     } else {
         s.to_owned()

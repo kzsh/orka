@@ -152,7 +152,10 @@ mod tests {
 
     #[test]
     fn split_colon_normal() {
-        assert_eq!(split_once_colon("~/.cargo:~/.cargo"), ("~/.cargo", "~/.cargo"));
+        assert_eq!(
+            split_once_colon("~/.cargo:~/.cargo"),
+            ("~/.cargo", "~/.cargo")
+        );
     }
 
     #[test]
@@ -174,7 +177,10 @@ mod tests {
     #[test]
     fn split_eq_value_contains_equals() {
         // Handles values like PATH=/usr/bin:/usr/local/bin or BASE64 strings.
-        assert_eq!(split_once_eq("PATH=/usr/bin=extra"), ("PATH", "/usr/bin=extra"));
+        assert_eq!(
+            split_once_eq("PATH=/usr/bin=extra"),
+            ("PATH", "/usr/bin=extra")
+        );
     }
 
     #[test]

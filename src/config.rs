@@ -39,10 +39,9 @@ pub fn config_path() -> PathBuf {
 
 /// Load and parse the environments config file.
 pub fn load(path: &Path) -> Result<Config, String> {
-    let content = fs::read_to_string(path)
-        .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
-    serde_yml::from_str(&content)
-        .map_err(|e| format!("failed to parse {}: {e}", path.display()))
+    let content =
+        fs::read_to_string(path).map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+    serde_yml::from_str(&content).map_err(|e| format!("failed to parse {}: {e}", path.display()))
 }
 
 #[cfg(test)]
