@@ -61,7 +61,7 @@ echo ""
 gh release create "$TAG" \
     --repo "$REPO" \
     --title "$TAG" \
-    --generate-notes \
+    --notes '' \
     "${artifacts[@]}"
 
 echo "Released: https://github.com/$REPO/releases/tag/$TAG"
