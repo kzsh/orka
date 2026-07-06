@@ -1,0 +1,48 @@
+# The base image carries the (slow-changing) apt dependencies and is built
+# from Dockerfile.base. Keeping it separate means a --no-cache rebuild here
+# does not re-fetch all the apt packages.
+ARG BASE_IMAGE=pita-base:latest
+FROM ${BASE_IMAGE}
+
+ARG USER_UID=1000
+ARG USER_GID=1000
+ARG UNAME=appuser
+ARG VERSION=latest
+
+# Create a new group and user with the specified IDs
+RUN groupadd -g $USER_GID -o $UNAME && \
+    useradd -m -u $USER_UID -g $USER_GID -o -s /bin/bash $UNAME
+
+RUN chown -R "$USER_UID:$USER_GID" /home/$UNAME
+
+# Isolated install root for claude and its bun globals.  Lives outside $HOME
+# so that mounted presets can never shadow it.
+RUN mkdir -p /opt/claude-bun && chown "$USER_UID:$USER_GID" /opt/claude-bun
+
+WORKDIR "/home/$UNAME"
+
+USER $UNAME
+
+ENV HOME="/home/$UNAME"
+
+# Point bun's global install to the isolated claude directory so it is never
+# reachable from a user-mounted ~/.bun or a preset-injected PATH.
+ENV BUN_INSTALL="/opt/claude-bun"
+ENV BUN_INSTALL_BIN="/opt/claude-bun/bin"
+ENV PATH="/opt/claude-bun/bin:$PATH"
+
+# Install claude-code before copying the entrypoint so that changes to the
+# entrypoint script don't bust the expensive bun install cache layer.
+RUN bun install --global @anthropic-ai/claude-code@${VERSION} && \
+    which claude
+
+# Create the ~/.local/bin/claude symlink that claude-code expects to find.
+# Without it claude emits a warning on every startup. Doing this in the image
+# layer means the symlink is never written to any host-mounted path: if the
+# user mounts ~/.local/bin from the host, Docker overlays it over this layer
+# and the host filesystem is left untouched.
+RUN mkdir -p /home/$UNAME/.local/bin && \
+    ln -sf /opt/claude-bun/bin/claude /home/$UNAME/.local/bin/claude
+
+COPY ./entrypoint.claude.sh /usr/local/bin/entrypoint.sh
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

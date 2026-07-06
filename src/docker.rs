@@ -4,27 +4,35 @@ use std::process::{Command, ExitStatus};
 
 use tempfile::TempDir;
 
+use crate::cli::Runtime;
+
 // Embed the Docker build context files so the binary is self-contained.
 // These paths are relative to the workspace root (i.e. the directory that
-// contains Cargo.toml, Dockerfile, Dockerfile.base, and entrypoint.sh).
+// contains Cargo.toml and the Dockerfiles).
 const DOCKERFILE: &str = include_str!("../Dockerfile");
 const DOCKERFILE_BASE: &str = include_str!("../Dockerfile.base");
+const DOCKERFILE_CLAUDE: &str = include_str!("../Dockerfile.claude");
 const ENTRYPOINT_SH: &str = include_str!("../entrypoint.sh");
+const ENTRYPOINT_CLAUDE_SH: &str = include_str!("../entrypoint.claude.sh");
 
-const CONTAINER_NAME: &str = "pita";
 const BASE_CONTAINER_NAME: &str = "pita-base";
+const PI_CONTAINER_NAME: &str = "pita";
+const CLAUDE_CONTAINER_NAME: &str = "pita-claude";
 
 /// Everything the caller needs to communicate to the docker build+run sequence.
 pub struct RunConfig {
+    pub runtime: Runtime,
     pub no_cache: bool,
     pub dry_run: bool,
     pub quiet: bool,
     pub debug: bool,
     pub ephemeral: bool,
     pub pi_version: Option<String>,
-    /// When true, skips passing `INSTALL_AGENT_BROWSER=true` to the main image build.
+    /// When true, skips passing `INSTALL_AGENT_BROWSER=true` to the pi image build.
+    /// Ignored for the claude runtime.
     pub no_browser: bool,
     /// When true, mounts a tmpfs over ~/.pi/agent/extensions to hide all extensions.
+    /// Ignored for the claude runtime.
     pub no_extensions: bool,
     /// Resolved `(host_path, container_path)` volume pairs.
     pub volumes: Vec<(String, String)>,
@@ -34,8 +42,8 @@ pub struct RunConfig {
     pub container_args: Vec<String>,
 }
 
-/// Write the embedded Dockerfiles and entrypoint into a fresh temp directory
-/// and return it.  The directory is the Docker build context.
+/// Write all embedded Dockerfiles and entrypoints into a fresh temp directory
+/// and return it.  The directory is used as the Docker build context.
 fn write_build_context() -> Result<TempDir, String> {
     let dir =
         tempfile::tempdir().map_err(|e| format!("failed to create temp build context: {e}"))?;
@@ -46,11 +54,20 @@ fn write_build_context() -> Result<TempDir, String> {
     fs::write(dir.path().join("Dockerfile.base"), DOCKERFILE_BASE)
         .map_err(|e| format!("failed to write Dockerfile.base to build context: {e}"))?;
 
+    fs::write(dir.path().join("Dockerfile.claude"), DOCKERFILE_CLAUDE)
+        .map_err(|e| format!("failed to write Dockerfile.claude to build context: {e}"))?;
+
     let entrypoint = dir.path().join("entrypoint.sh");
     fs::write(&entrypoint, ENTRYPOINT_SH)
         .map_err(|e| format!("failed to write entrypoint.sh to build context: {e}"))?;
     fs::set_permissions(&entrypoint, fs::Permissions::from_mode(0o755))
         .map_err(|e| format!("failed to set entrypoint.sh permissions: {e}"))?;
+
+    let claude_entrypoint = dir.path().join("entrypoint.claude.sh");
+    fs::write(&claude_entrypoint, ENTRYPOINT_CLAUDE_SH)
+        .map_err(|e| format!("failed to write entrypoint.claude.sh to build context: {e}"))?;
+    fs::set_permissions(&claude_entrypoint, fs::Permissions::from_mode(0o755))
+        .map_err(|e| format!("failed to set entrypoint.claude.sh permissions: {e}"))?;
 
     Ok(dir)
 }
@@ -64,9 +81,6 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
         .ok_or_else(|| "temp build context path contains non-UTF-8 characters".to_string())?;
 
     let base_ref = format!("{BASE_CONTAINER_NAME}:latest");
-    let tag = cfg.pi_version.as_deref().unwrap_or("latest");
-    let main_ref = format!("{CONTAINER_NAME}:{tag}");
-
     let uid = current_uid();
     let gid = current_gid();
     let uname = std::env::var("USER")
@@ -74,8 +88,23 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
         .unwrap_or_else(|_| "appuser".to_string());
 
     let base_build = build_base_command(&base_ref, ctx_path, cfg);
-    let main_build = build_main_command(&main_ref, &base_ref, &uname, uid, gid, ctx_path, cfg);
-    let run_cmd = run_command_args(&main_ref, uid, gid, cfg)?;
+
+    let (main_build, run_cmd) = match cfg.runtime {
+        Runtime::Pi => {
+            let tag = cfg.pi_version.as_deref().unwrap_or("latest");
+            let main_ref = format!("{PI_CONTAINER_NAME}:{tag}");
+            let b = build_pi_main_command(&main_ref, &base_ref, &uname, uid, gid, ctx_path, cfg);
+            let r = run_pi_command_args(&main_ref, uid, gid, cfg)?;
+            (b, r)
+        }
+        Runtime::Claude => {
+            let main_ref = format!("{CLAUDE_CONTAINER_NAME}:latest");
+            let b =
+                build_claude_main_command(&main_ref, &base_ref, &uname, uid, gid, ctx_path, cfg);
+            let r = run_claude_command_args(&main_ref, uid, gid, cfg)?;
+            (b, r)
+        }
+    };
 
     if cfg.dry_run {
         print_dry_run("base image build", &base_build);
@@ -92,7 +121,7 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
 }
 
 // ---------------------------------------------------------------------------
-// Command builders
+// Command builders — base (shared)
 // ---------------------------------------------------------------------------
 
 fn build_base_command(base_ref: &str, ctx_path: &str, cfg: &RunConfig) -> Vec<String> {
@@ -102,7 +131,6 @@ fn build_base_command(base_ref: &str, ctx_path: &str, cfg: &RunConfig) -> Vec<St
         s("--tag"),
         s(base_ref),
         s("--file"),
-        // Point docker at the embedded Dockerfile.base inside the temp dir.
         format!("{ctx_path}/Dockerfile.base"),
     ];
     if cfg.debug {
@@ -115,7 +143,11 @@ fn build_base_command(base_ref: &str, ctx_path: &str, cfg: &RunConfig) -> Vec<St
     cmd
 }
 
-fn build_main_command(
+// ---------------------------------------------------------------------------
+// Command builders — pi runtime
+// ---------------------------------------------------------------------------
+
+fn build_pi_main_command(
     main_ref: &str,
     base_ref: &str,
     uname: &str,
@@ -159,7 +191,7 @@ fn build_main_command(
     cmd
 }
 
-fn run_command_args(
+fn run_pi_command_args(
     main_ref: &str,
     uid: u32,
     gid: u32,
@@ -220,7 +252,115 @@ fn run_command_args(
         cmd.push(format!("{key}={val}"));
     }
 
-    // Always forward the three API keys from the host environment.
+    for key in ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPEN_ROUTER_KEY"] {
+        cmd.push(s("--env"));
+        cmd.push(format!("{key}={}", std::env::var(key).unwrap_or_default()));
+    }
+
+    cmd.push(s("--workdir"));
+    cmd.push(cfg.workdir.clone());
+    cmd.push(s(main_ref));
+    cmd.extend(cfg.container_args.iter().cloned());
+
+    Ok(cmd)
+}
+
+// ---------------------------------------------------------------------------
+// Command builders — claude runtime
+// ---------------------------------------------------------------------------
+
+fn build_claude_main_command(
+    main_ref: &str,
+    base_ref: &str,
+    uname: &str,
+    uid: u32,
+    gid: u32,
+    ctx_path: &str,
+    cfg: &RunConfig,
+) -> Vec<String> {
+    let mut cmd = vec![
+        s("docker"),
+        s("build"),
+        s("--tag"),
+        s(main_ref),
+        s("--file"),
+        format!("{ctx_path}/Dockerfile.claude"),
+        s("--build-arg"),
+        format!("BASE_IMAGE={base_ref}"),
+        s("--build-arg"),
+        format!("USER_UID={uid}"),
+        s("--build-arg"),
+        format!("USER_GID={gid}"),
+        s("--build-arg"),
+        format!("UNAME={uname}"),
+    ];
+    if cfg.no_cache {
+        cmd.push(s("--no-cache"));
+    }
+    if cfg.debug {
+        cmd.push(s("--debug"));
+    }
+    if cfg.quiet {
+        cmd.push(s("--quiet"));
+    }
+    cmd.push(s(ctx_path));
+    cmd
+}
+
+fn run_claude_command_args(
+    main_ref: &str,
+    uid: u32,
+    gid: u32,
+    cfg: &RunConfig,
+) -> Result<Vec<String>, String> {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+    let claude_dir = format!("{home}/.claude");
+    fs::create_dir_all(&claude_dir).map_err(|e| format!("failed to create {claude_dir}: {e}"))?;
+
+    // claude.json holds user preferences (theme, model, etc.).  It is a file,
+    // not a directory, so we must ensure it exists before bind-mounting it —
+    // Docker would create it as a directory otherwise.
+    let claude_json = format!("{home}/.claude.json");
+    if !std::path::Path::new(&claude_json).exists() {
+        fs::write(&claude_json, "{}")
+            .map_err(|e| format!("failed to create {claude_json}: {e}"))?;
+    }
+
+    let mut cmd = vec![
+        s("docker"),
+        s("run"),
+        s("--user"),
+        format!("{uid}:{gid}"),
+        s("--interactive"),
+        s("--tty"),
+    ];
+    if cfg.ephemeral {
+        cmd.push(s("--rm"));
+    }
+    cmd.push(s("--cap-drop=ALL"));
+    cmd.push(s("--security-opt=no-new-privileges"));
+    if cfg.debug {
+        cmd.push(s("--debug"));
+    }
+
+    // Claude config/data dir is always mounted so conversation history persists.
+    cmd.push(s("--volume"));
+    cmd.push(format!("{claude_dir}:{claude_dir}"));
+
+    // claude.json holds user preferences (theme, model, etc.) and must be
+    // mounted as a file so changes made inside the container are written back.
+    cmd.push(s("--volume"));
+    cmd.push(format!("{claude_json}:{claude_json}"));
+
+    for (host, container) in &cfg.volumes {
+        cmd.push(s("--volume"));
+        cmd.push(format!("{host}:{container}"));
+    }
+    for (key, val) in &cfg.env_vars {
+        cmd.push(s("--env"));
+        cmd.push(format!("{key}={val}"));
+    }
+
     for key in ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPEN_ROUTER_KEY"] {
         cmd.push(s("--env"));
         cmd.push(format!("{key}={}", std::env::var(key).unwrap_or_default()));
@@ -351,11 +491,132 @@ mod tests {
 
     #[test]
     fn uid_and_gid_are_nonzero_for_normal_user() {
-        // When running tests as a non-root user (which CI and dev boxes are),
-        // both should be > 0.  This is a sanity check, not a hard requirement.
         let uid = current_uid();
         let gid = current_gid();
         assert!(uid < u32::MAX);
         assert!(gid < u32::MAX);
+    }
+
+    fn make_cfg(runtime: Runtime) -> RunConfig {
+        RunConfig {
+            runtime,
+            no_cache: false,
+            dry_run: false,
+            quiet: false,
+            debug: false,
+            ephemeral: false,
+            pi_version: None,
+            no_browser: false,
+            no_extensions: false,
+            volumes: vec![],
+            env_vars: vec![],
+            workdir: "/work".to_string(),
+            container_args: vec![],
+        }
+    }
+
+    #[test]
+    fn pi_build_command_uses_pi_image_name() {
+        let cfg = make_cfg(Runtime::Pi);
+        let cmd = build_pi_main_command(
+            "pita:latest",
+            "pita-base:latest",
+            "user",
+            1000,
+            1000,
+            "/ctx",
+            &cfg,
+        );
+        assert_eq!(cmd[0], "docker");
+        assert_eq!(cmd[1], "build");
+        assert!(cmd.contains(&"pita:latest".to_string()));
+        // No --file means it uses the context default (Dockerfile)
+        assert!(!cmd.contains(&"--file".to_string()));
+    }
+
+    #[test]
+    fn claude_build_command_uses_claude_dockerfile() {
+        let cfg = make_cfg(Runtime::Claude);
+        let cmd = build_claude_main_command(
+            "pita-claude:latest",
+            "pita-base:latest",
+            "user",
+            1000,
+            1000,
+            "/ctx",
+            &cfg,
+        );
+        assert_eq!(cmd[0], "docker");
+        assert_eq!(cmd[1], "build");
+        assert!(cmd.contains(&"pita-claude:latest".to_string()));
+        // Must specify --file pointing at Dockerfile.claude
+        let file_idx = cmd.iter().position(|a| a == "--file").unwrap();
+        assert!(cmd[file_idx + 1].ends_with("Dockerfile.claude"));
+    }
+
+    #[test]
+    fn pi_build_installs_browser_by_default() {
+        let cfg = make_cfg(Runtime::Pi);
+        let cmd = build_pi_main_command(
+            "pita:latest",
+            "pita-base:latest",
+            "user",
+            1000,
+            1000,
+            "/ctx",
+            &cfg,
+        );
+        let joined = cmd.join(" ");
+        assert!(joined.contains("INSTALL_AGENT_BROWSER=true"));
+    }
+
+    #[test]
+    fn pi_build_skips_browser_when_no_browser() {
+        let mut cfg = make_cfg(Runtime::Pi);
+        cfg.no_browser = true;
+        let cmd = build_pi_main_command(
+            "pita:latest",
+            "pita-base:latest",
+            "user",
+            1000,
+            1000,
+            "/ctx",
+            &cfg,
+        );
+        let joined = cmd.join(" ");
+        assert!(!joined.contains("INSTALL_AGENT_BROWSER"));
+    }
+
+    #[test]
+    fn claude_build_never_passes_browser_arg() {
+        let cfg = make_cfg(Runtime::Claude);
+        let cmd = build_claude_main_command(
+            "pita-claude:latest",
+            "pita-base:latest",
+            "user",
+            1000,
+            1000,
+            "/ctx",
+            &cfg,
+        );
+        let joined = cmd.join(" ");
+        assert!(!joined.contains("INSTALL_AGENT_BROWSER"));
+    }
+
+    #[test]
+    fn pi_build_passes_version_when_set() {
+        let mut cfg = make_cfg(Runtime::Pi);
+        cfg.pi_version = Some("1.2.3".to_string());
+        let cmd = build_pi_main_command(
+            "pita:1.2.3",
+            "pita-base:latest",
+            "user",
+            1000,
+            1000,
+            "/ctx",
+            &cfg,
+        );
+        let joined = cmd.join(" ");
+        assert!(joined.contains("VERSION=1.2.3"));
     }
 }

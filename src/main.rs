@@ -99,6 +99,7 @@ fn run() -> Result<(), String> {
     }
 
     let run_cfg = RunConfig {
+        runtime: cli.runtime,
         no_cache: cli.no_cache,
         dry_run: cli.dry_run,
         quiet: cli.quiet,
