@@ -32,10 +32,10 @@ TARGETS=(
 for target in "${TARGETS[@]}"; do
     echo "==> $target"
     cross build --release --target "$target"
-    cp "target/$target/release/pita" "$DIST/pita-$target"
-    echo "   -> $DIST/pita-$target"
+    cp "target/$target/release/orka" "$DIST/orka-$target"
+    echo "   -> $DIST/orka-$target"
 done
 
 echo ""
 echo "Artifacts in $DIST/:"
-ls -lh "$DIST/pita-"*
+ls -lh "$DIST/orka-"*

@@ -13,7 +13,7 @@ pub enum Runtime {
 }
 
 #[derive(Parser, Debug)]
-#[command(name = "pita", about = "Pi (or Claude) in a container", version)]
+#[command(name = "orka", about = "Agent runtime container wrapper", version)]
 pub struct Cli {
     /// Agent runtime to use inside the container.
     #[arg(long, value_enum, default_value = "pi")]

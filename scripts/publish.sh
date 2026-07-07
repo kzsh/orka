@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Publish dist/ artifacts to GitHub releases on kzsh/pita.
+# Publish dist/ artifacts to GitHub releases on kzsh/orka.
 #
 # Without --release: uploads unversioned artifacts to a rolling "latest"
 # GitHub release.  No versioned release entity is created and no git tag
@@ -23,7 +23,7 @@
 
 set -euo pipefail
 
-REPO="kzsh/pita"
+REPO="kzsh/orka"
 DIST="${DIST:-dist}"
 DO_RELEASE=false
 
@@ -42,7 +42,7 @@ command -v gh &>/dev/null || {
 VERSION="$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')"
 VERSION_TAG="v$VERSION"
 
-mapfile -t unversioned < <(find "$DIST" -maxdepth 1 -name "pita-*" -not -name "pita-$VERSION-*" -type f | sort)
+mapfile -t unversioned < <(find "$DIST" -maxdepth 1 -name "orka-*" -not -name "orka-$VERSION-*" -type f | sort)
 
 if [[ ${#unversioned[@]} -eq 0 ]]; then
     echo "error: no artifacts found in $DIST/. Run scripts/build.sh first."
@@ -54,7 +54,7 @@ if [[ "$DO_RELEASE" == true ]]; then
     versioned=()
     for f in "${unversioned[@]}"; do
         base="$(basename "$f")"
-        dest="$DIST/pita-$VERSION-${base#pita-}"  # pita-x86_64-... -> pita-0.0.1-x86_64-...
+        dest="$DIST/orka-$VERSION-${base#orka-}"  # orka-x86_64-... -> orka-0.0.1-x86_64-...
         cp "$f" "$dest"
         versioned+=("$dest")
     done

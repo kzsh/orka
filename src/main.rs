@@ -14,7 +14,7 @@ use docker::RunConfig;
 
 fn main() {
     if let Err(e) = run() {
-        eprintln!("pita: {e}");
+        eprintln!("orka: {e}");
         process::exit(1);
     }
 }
@@ -122,7 +122,7 @@ fn require_config_file(path: &Path) -> Result<(), String> {
         return Err(format!(
             "no environments file found at: {path}\n\
              copy the template to get started:\n  \
-             cp <pita_source>/config/environments.yaml {path}",
+             cp <orka_source>/config/environments.yaml {path}",
             path = path.display()
         ));
     }

@@ -1,9 +1,9 @@
-# pita environment definitions
+# orka environment definitions
 #
-# Copy this file to ${XDG_CONFIG_HOME:-~/.config}/pita/environments.yaml
+# Copy this file to ${XDG_CONFIG_HOME:-~/.config}/orka/environments.yaml
 # and adjust paths to match your system.
 #
-# Each environment is a named set of Docker flags that pita appends when
+# Each environment is a named set of Docker flags that orka appends when
 # invoked with --env <name>.
 #
 # volumes  - list of host_path:container_path pairs (Docker --volume).
@@ -14,9 +14,9 @@
 # also expanded from the host environment at runtime.
 #
 # Usage:
-#   pita --preset rust      # mounts cargo + rustup into the container
-#   pita --preset list      # prints available preset names
-#   pita --env FOO=bar      # inject an arbitrary env var
+#   orka --preset rust      # mounts cargo + rustup into the container
+#   orka --preset list      # prints available preset names
+#   orka --env FOO=bar      # inject an arbitrary env var
 
 environments:
   xtool:

@@ -17,10 +17,10 @@ const ENTRYPOINT_SH: &str = include_str!("../entrypoint.sh");
 const ENTRYPOINT_CLAUDE_SH: &str = include_str!("../entrypoint.claude.sh");
 const ENTRYPOINT_CODEX_SH: &str = include_str!("../entrypoint.codex.sh");
 
-const BASE_CONTAINER_NAME: &str = "pita-base";
-const PI_CONTAINER_NAME: &str = "pita";
-const CLAUDE_CONTAINER_NAME: &str = "pita-claude";
-const CODEX_CONTAINER_NAME: &str = "pita-codex";
+const BASE_CONTAINER_NAME: &str = "orka-base";
+const PI_CONTAINER_NAME: &str = "orka";
+const CLAUDE_CONTAINER_NAME: &str = "orka-claude";
+const CODEX_CONTAINER_NAME: &str = "orka-codex";
 
 /// Everything the caller needs to communicate to the docker build+run sequence.
 pub struct RunConfig {
@@ -632,8 +632,8 @@ mod tests {
     fn pi_build_command_uses_pi_image_name() {
         let cfg = make_cfg(Runtime::Pi);
         let cmd = build_pi_main_command(
-            "pita:latest",
-            "pita-base:latest",
+            "orka:latest",
+            "orka-base:latest",
             "user",
             1000,
             1000,
@@ -642,7 +642,7 @@ mod tests {
         );
         assert_eq!(cmd[0], "docker");
         assert_eq!(cmd[1], "build");
-        assert!(cmd.contains(&"pita:latest".to_string()));
+        assert!(cmd.contains(&"orka:latest".to_string()));
         // No --file means it uses the context default (Dockerfile)
         assert!(!cmd.contains(&"--file".to_string()));
     }
@@ -651,8 +651,8 @@ mod tests {
     fn claude_build_command_uses_claude_dockerfile() {
         let cfg = make_cfg(Runtime::Claude);
         let cmd = build_claude_main_command(
-            "pita-claude:latest",
-            "pita-base:latest",
+            "orka-claude:latest",
+            "orka-base:latest",
             "user",
             1000,
             1000,
@@ -661,7 +661,7 @@ mod tests {
         );
         assert_eq!(cmd[0], "docker");
         assert_eq!(cmd[1], "build");
-        assert!(cmd.contains(&"pita-claude:latest".to_string()));
+        assert!(cmd.contains(&"orka-claude:latest".to_string()));
         // Must specify --file pointing at Dockerfile.claude
         let file_idx = cmd.iter().position(|a| a == "--file").unwrap();
         assert!(cmd[file_idx + 1].ends_with("Dockerfile.claude"));
@@ -671,8 +671,8 @@ mod tests {
     fn pi_build_installs_browser_by_default() {
         let cfg = make_cfg(Runtime::Pi);
         let cmd = build_pi_main_command(
-            "pita:latest",
-            "pita-base:latest",
+            "orka:latest",
+            "orka-base:latest",
             "user",
             1000,
             1000,
@@ -688,8 +688,8 @@ mod tests {
         let mut cfg = make_cfg(Runtime::Pi);
         cfg.no_browser = true;
         let cmd = build_pi_main_command(
-            "pita:latest",
-            "pita-base:latest",
+            "orka:latest",
+            "orka-base:latest",
             "user",
             1000,
             1000,
@@ -704,8 +704,8 @@ mod tests {
     fn claude_build_never_passes_browser_arg() {
         let cfg = make_cfg(Runtime::Claude);
         let cmd = build_claude_main_command(
-            "pita-claude:latest",
-            "pita-base:latest",
+            "orka-claude:latest",
+            "orka-base:latest",
             "user",
             1000,
             1000,
@@ -721,8 +721,8 @@ mod tests {
         let mut cfg = make_cfg(Runtime::Pi);
         cfg.pi_version = Some("1.2.3".to_string());
         let cmd = build_pi_main_command(
-            "pita:1.2.3",
-            "pita-base:latest",
+            "orka:1.2.3",
+            "orka-base:latest",
             "user",
             1000,
             1000,

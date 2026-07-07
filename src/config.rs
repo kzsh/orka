@@ -34,7 +34,7 @@ pub fn config_path() -> PathBuf {
             let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
             PathBuf::from(home).join(".config")
         });
-    config_home.join("pita").join("environments.yaml")
+    config_home.join("orka").join("environments.yaml")
 }
 
 /// Load and parse the environments config file.

@@ -61,5 +61,5 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pita-${{ matrix.target }}
-          path: target/${{ matrix.target }}/release/pita
+          name: orka-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/orka

@@ -1,26 +1,29 @@
-# pita
+# orka
 
-Pi in a container. A single Rust binary that builds a Docker image containing
-[@earendil-works/pi-coding-agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent)
-and drops you into it, with your current directory mounted as a volume.
+Agent runtime container wrapper. A single Rust binary that builds Docker images
+containing your choice of agent runtime (pi, claude-code, or codex) and drops
+you into one, with your current directory mounted as a volume.
 
 ## Usage
 
 ```
-pita [OPTIONS] [CONTAINER_ARGS]...
+orka [OPTIONS] [CONTAINER_ARGS]...
 ```
 
-`CONTAINER_ARGS` are forwarded verbatim to `pi` inside the container.
+`CONTAINER_ARGS` are forwarded verbatim to the agent inside the container.
 
 ### Options
 
 | Flag | Description |
 |---|---|
-| `--preset <NAME>` | Load volumes and env vars from a named preset in `~/.config/pita/environments.yaml`. Use `--preset list` to print available presets. |
+| `--runtime <RUNTIME>` | Agent runtime to use: `pi` (default), `claude`, or `codex`. |
+| `--preset <NAME>` | Load volumes and env vars from a named preset in `~/.config/orka/environments.yaml`. Use `--preset list` to print available presets. |
 | `--env KEY=VALUE` | Inject an env var into the container. Repeatable. |
-| `--no-cache` | Rebuild the pi image ignoring Docker's layer cache. The base image (apt deps) is always cached. |
-| `--pi-version <VER>` | Install a specific `@earendil-works/pi-coding-agent` version instead of `latest`. |
+| `--no-cache` | Rebuild the agent image ignoring Docker's layer cache. The base image (apt deps) is always cached. |
+| `--pi-version <VER>` | Install a specific `@earendil-works/pi-coding-agent` version instead of `latest`. Applies to `--runtime pi` only. |
 | `--ephemeral` | Remove the container on exit (`docker run --rm`). |
+| `--no-browser` | Skip installing agent-browser and Chromium. Applies to `--runtime pi` only. |
+| `--no-extensions` / `-N` | Hide all auto-discovered pi extensions for this run. Applies to `--runtime pi` only. |
 | `--quiet` / `-q` | Suppress Docker build output. |
 | `--debug` | Pass `--debug` to Docker build and run. |
 | `--dry-run` | Print the Docker commands without executing them. |
@@ -30,8 +33,8 @@ pita [OPTIONS] [CONTAINER_ARGS]...
 Copy the bundled template and edit it to match your system:
 
 ```sh
-mkdir -p ~/.config/pita
-cp config/environments.yaml ~/.config/pita/environments.yaml
+mkdir -p ~/.config/orka
+cp config/environments.yaml ~/.config/orka/environments.yaml
 ```
 
 Preset YAML format:
@@ -59,11 +62,11 @@ Rust stable required.
 
 ```sh
 cargo build --release
-# binary at target/release/pita
+# binary at target/release/orka
 ```
 
-The Dockerfiles and `entrypoint.sh` are embedded in the binary at compile time
-via `include_str!`, so the released binary is fully self-contained.
+The Dockerfiles and entrypoint scripts are embedded in the binary at compile
+time via `include_str!`, so the released binary is fully self-contained.
 
 ## Running tests
 

@@ -85,28 +85,28 @@ mod tests {
 
     #[test]
     fn expand_dollar_var() {
-        std::env::set_var("_PITA_TEST_VAR", "hello");
-        assert_eq!(expand_shell_vars("$_PITA_TEST_VAR/world"), "hello/world");
+        std::env::set_var("_ORKA_TEST_VAR", "hello");
+        assert_eq!(expand_shell_vars("$_ORKA_TEST_VAR/world"), "hello/world");
     }
 
     #[test]
     fn expand_braced_var() {
-        std::env::set_var("_PITA_TEST_BRACED", "hi");
-        assert_eq!(expand_shell_vars("${_PITA_TEST_BRACED}/there"), "hi/there");
+        std::env::set_var("_ORKA_TEST_BRACED", "hi");
+        assert_eq!(expand_shell_vars("${_ORKA_TEST_BRACED}/there"), "hi/there");
     }
 
     #[test]
     fn expand_unknown_var_is_empty() {
         // Remove if set so we get the unset path.
-        std::env::remove_var("_PITA_DEFINITELY_UNSET");
-        assert_eq!(expand_shell_vars("$_PITA_DEFINITELY_UNSET"), "");
+        std::env::remove_var("_ORKA_DEFINITELY_UNSET");
+        assert_eq!(expand_shell_vars("$_ORKA_DEFINITELY_UNSET"), "");
     }
 
     #[test]
     fn expand_value_tilde_and_var() {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
-        std::env::set_var("_PITA_TEST_SUFFIX", "bin");
-        let result = expand_value("~/$_PITA_TEST_SUFFIX");
+        std::env::set_var("_ORKA_TEST_SUFFIX", "bin");
+        let result = expand_value("~/$_ORKA_TEST_SUFFIX");
         assert_eq!(result, format!("{home}/bin"));
     }
 }

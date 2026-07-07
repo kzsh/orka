@@ -1,10 +1,10 @@
 [package]
-name = "pita"
+name = "orka"
 version = "0.0.1"
 edition = "2021"
 
 [[bin]]
-name = "pita"
+name = "orka"
 path = "src/main.rs"
 
 [profile.release]

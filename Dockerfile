@@ -1,7 +1,7 @@
 # The base image carries the (slow-changing) apt dependencies and is built
 # from Dockerfile.base. Keeping it separate means a --no-cache rebuild here
 # (to pull the latest pi) does not re-fetch all the apt packages.
-ARG BASE_IMAGE=pita-base:latest
+ARG BASE_IMAGE=orka-base:latest
 FROM ${BASE_IMAGE}
 
 # Define build arguments for UID and GID with default values
