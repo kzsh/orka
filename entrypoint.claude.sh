@@ -4,7 +4,7 @@
 export PATH="/opt/claude-bun/bin:$PATH"
 
 echo "====================="
-echo "Claude Code in a container"
+echo "Orka: claude"
 echo "====================="
 which claude
 claude --version

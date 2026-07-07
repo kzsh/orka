@@ -20,7 +20,7 @@ orka [OPTIONS] [CONTAINER_ARGS]...
 | `--preset <NAME>` | Load volumes and env vars from a named preset in `~/.config/orka/environments.yaml`. Use `--preset list` to print available presets. |
 | `--env KEY=VALUE` | Inject an env var into the container. Repeatable. |
 | `--no-cache` | Rebuild the agent image ignoring Docker's layer cache. The base image (apt deps) is always cached. |
-| `--pi-version <VER>` | Install a specific `@earendil-works/pi-coding-agent` version instead of `latest`. Applies to `--runtime pi` only. |
+| `--harness-version <VER>` | Install a specific agent harness version instead of `latest`. Applies to `--runtime pi` only. |
 | `--ephemeral` | Remove the container on exit (`docker run --rm`). |
 | `--no-browser` | Skip installing agent-browser and Chromium. Applies to `--runtime pi` only. |
 | `--no-extensions` / `-N` | Hide all auto-discovered pi extensions for this run. Applies to `--runtime pi` only. |

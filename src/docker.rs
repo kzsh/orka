@@ -30,7 +30,7 @@ pub struct RunConfig {
     pub quiet: bool,
     pub debug: bool,
     pub ephemeral: bool,
-    pub pi_version: Option<String>,
+    pub harness_version: Option<String>,
     /// When true, skips passing `INSTALL_AGENT_BROWSER=true` to the pi image build.
     /// Ignored for the claude runtime.
     pub no_browser: bool,
@@ -103,7 +103,7 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
 
     let (main_build, run_cmd) = match cfg.runtime {
         Runtime::Pi => {
-            let tag = cfg.pi_version.as_deref().unwrap_or("latest");
+            let tag = cfg.harness_version.as_deref().unwrap_or("latest");
             let main_ref = format!("{PI_CONTAINER_NAME}:{tag}");
             let b = build_pi_main_command(&main_ref, &base_ref, &uname, uid, gid, ctx_path, cfg);
             let r = run_pi_command_args(&main_ref, uid, gid, cfg)?;
@@ -188,7 +188,7 @@ fn build_pi_main_command(
         s("--build-arg"),
         format!("UNAME={uname}"),
     ];
-    if let Some(ref ver) = cfg.pi_version {
+    if let Some(ref ver) = cfg.harness_version {
         cmd.push(s("--build-arg"));
         cmd.push(format!("VERSION={ver}"));
     }
@@ -618,7 +618,7 @@ mod tests {
             quiet: false,
             debug: false,
             ephemeral: false,
-            pi_version: None,
+            harness_version: None,
             no_browser: false,
             no_extensions: false,
             volumes: vec![],
@@ -719,7 +719,7 @@ mod tests {
     #[test]
     fn pi_build_passes_version_when_set() {
         let mut cfg = make_cfg(Runtime::Pi);
-        cfg.pi_version = Some("1.2.3".to_string());
+        cfg.harness_version = Some("1.2.3".to_string());
         let cmd = build_pi_main_command(
             "orka:1.2.3",
             "orka-base:latest",

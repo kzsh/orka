@@ -1,6 +1,6 @@
 #!/bin/bash
 echo "====================="
-echo "Codex in a container"
+echo "Orka: codex"
 echo "====================="
 which codex
 codex --version

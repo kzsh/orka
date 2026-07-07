@@ -41,10 +41,10 @@ pub struct Cli {
     #[arg(long, short = 'q')]
     pub quiet: bool,
 
-    /// Set the @earendil-works/pi-coding-agent version to install (default: latest).
+    /// Set the LLM agent version to install (default: latest).
     /// Applies to --runtime pi only.
     #[arg(long, short = 'v', value_name = "VERSION")]
-    pub pi_version: Option<String>,
+    pub harness_version: Option<String>,
 
     /// Enable Docker debug mode on build and run.
     #[arg(long)]

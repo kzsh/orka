@@ -105,7 +105,7 @@ fn run() -> Result<(), String> {
         quiet: cli.quiet,
         debug: cli.debug,
         ephemeral: cli.ephemeral,
-        pi_version: cli.pi_version,
+        harness_version: cli.harness_version,
         no_browser: cli.no_browser,
         no_extensions: cli.no_extensions,
         volumes,
