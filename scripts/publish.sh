@@ -76,7 +76,7 @@ if gh release view "$TAG" --repo "$REPO" &>/dev/null; then
     if [[ "$DO_RELEASE" == true ]]; then
         echo "$TAG already exists on $REPO — deleting and re-releasing."
     fi
-    gh release delete "$TAG" --repo "$REPO" --yes
+    gh release delete "$TAG" --repo "$REPO" --cleanup-tag --yes
 fi
 
 gh release create "$TAG" \
@@ -94,5 +94,17 @@ if [[ "$DO_RELEASE" == true ]]; then
         echo "Tagged local commit $(git rev-parse --short HEAD) as $TAG"
     fi
 fi
+
+DATE="$(date -u +%Y-%m-%d)"
+README="public-repo/README.md"
+sed -i "s|^\*\*Latest:\*\*.*|**Latest:** $DATE|" "$README"
+
+if [[ "$DO_RELEASE" == true ]]; then
+    COMMIT_MSG="Release $TAG"
+else
+    COMMIT_MSG="Update latest ($DATE)"
+fi
+
+(cd public-repo && git add README.md && git diff --cached --quiet || git commit -m "$COMMIT_MSG" && git push)
 
 echo "Published: https://github.com/$REPO/releases/tag/$TAG"
