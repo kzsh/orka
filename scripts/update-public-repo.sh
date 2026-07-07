@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Syncs config/environments.yaml into public-repo/, commits, and pushes.
-# Called by scripts/publish-release.sh as part of the release flow.
+# Called as part of the release flow alongside scripts/publish.sh.
 #
 # Usage:
 #   ./scripts/update-public-repo.sh
