@@ -9,8 +9,8 @@
 #   - cross  (cargo install cross)
 #
 # Usage:
-#   ./scripts/build-matrix.sh
-#   DIST=out ./scripts/build-matrix.sh   # override output directory
+#   ./scripts/build.sh
+#   DIST=out ./scripts/build.sh   # override output directory
 
 set -euo pipefail
 
@@ -22,8 +22,6 @@ command -v cross &>/dev/null || {
     exit 1
 }
 
-VERSION="$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')"
-
 TARGETS=(
     x86_64-unknown-linux-gnu
     x86_64-unknown-linux-musl
@@ -34,10 +32,10 @@ TARGETS=(
 for target in "${TARGETS[@]}"; do
     echo "==> $target"
     cross build --release --target "$target"
-    cp "target/$target/release/pita" "$DIST/pita-$VERSION-$target"
-    echo "   -> $DIST/pita-$VERSION-$target"
+    cp "target/$target/release/pita" "$DIST/pita-$target"
+    echo "   -> $DIST/pita-$target"
 done
 
 echo ""
 echo "Artifacts in $DIST/:"
-ls -lh "$DIST/"
+ls -lh "$DIST/pita-"*

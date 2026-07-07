@@ -15,7 +15,7 @@
 # Prerequisites:
 #   - gh (GitHub CLI): https://cli.github.com
 #   - gh auth login
-#   - dist/ populated by scripts/build-matrix.sh
+#   - dist/ populated by scripts/build.sh
 #
 # Usage:
 #   ./scripts/publish.sh             # rolling latest
@@ -42,23 +42,22 @@ command -v gh &>/dev/null || {
 VERSION="$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')"
 VERSION_TAG="v$VERSION"
 
-mapfile -t versioned < <(find "$DIST" -maxdepth 1 -name "pita-$VERSION-*" -type f | sort)
+mapfile -t unversioned < <(find "$DIST" -maxdepth 1 -name "pita-*" -not -name "pita-$VERSION-*" -type f | sort)
 
-if [[ ${#versioned[@]} -eq 0 ]]; then
-    echo "error: no artifacts found in $DIST/. Run scripts/build-matrix.sh first."
+if [[ ${#unversioned[@]} -eq 0 ]]; then
+    echo "error: no artifacts found in $DIST/. Run scripts/build.sh first."
     exit 1
 fi
 
-unversioned=()
-for f in "${versioned[@]}"; do
-    base="$(basename "$f")"
-    stripped="$DIST/${base/$VERSION-/}"  # pita-0.0.1-x86_64-... -> pita-x86_64-...
-    cp "$f" "$stripped"
-    unversioned+=("$stripped")
-done
-
 if [[ "$DO_RELEASE" == true ]]; then
     TAG="$VERSION_TAG"
+    versioned=()
+    for f in "${unversioned[@]}"; do
+        base="$(basename "$f")"
+        dest="$DIST/pita-$VERSION-${base#pita-}"  # pita-x86_64-... -> pita-0.0.1-x86_64-...
+        cp "$f" "$dest"
+        versioned+=("$dest")
+    done
     artifacts=("${versioned[@]}" "${unversioned[@]}")
 else
     TAG="latest"
