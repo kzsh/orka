@@ -12,12 +12,15 @@ use crate::cli::Runtime;
 const DOCKERFILE: &str = include_str!("../Dockerfile");
 const DOCKERFILE_BASE: &str = include_str!("../Dockerfile.base");
 const DOCKERFILE_CLAUDE: &str = include_str!("../Dockerfile.claude");
+const DOCKERFILE_CODEX: &str = include_str!("../Dockerfile.codex");
 const ENTRYPOINT_SH: &str = include_str!("../entrypoint.sh");
 const ENTRYPOINT_CLAUDE_SH: &str = include_str!("../entrypoint.claude.sh");
+const ENTRYPOINT_CODEX_SH: &str = include_str!("../entrypoint.codex.sh");
 
 const BASE_CONTAINER_NAME: &str = "pita-base";
 const PI_CONTAINER_NAME: &str = "pita";
 const CLAUDE_CONTAINER_NAME: &str = "pita-claude";
+const CODEX_CONTAINER_NAME: &str = "pita-codex";
 
 /// Everything the caller needs to communicate to the docker build+run sequence.
 pub struct RunConfig {
@@ -69,6 +72,15 @@ fn write_build_context() -> Result<TempDir, String> {
     fs::set_permissions(&claude_entrypoint, fs::Permissions::from_mode(0o755))
         .map_err(|e| format!("failed to set entrypoint.claude.sh permissions: {e}"))?;
 
+    fs::write(dir.path().join("Dockerfile.codex"), DOCKERFILE_CODEX)
+        .map_err(|e| format!("failed to write Dockerfile.codex to build context: {e}"))?;
+
+    let codex_entrypoint = dir.path().join("entrypoint.codex.sh");
+    fs::write(&codex_entrypoint, ENTRYPOINT_CODEX_SH)
+        .map_err(|e| format!("failed to write entrypoint.codex.sh to build context: {e}"))?;
+    fs::set_permissions(&codex_entrypoint, fs::Permissions::from_mode(0o755))
+        .map_err(|e| format!("failed to set entrypoint.codex.sh permissions: {e}"))?;
+
     Ok(dir)
 }
 
@@ -102,6 +114,12 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
             let b =
                 build_claude_main_command(&main_ref, &base_ref, &uname, uid, gid, ctx_path, cfg);
             let r = run_claude_command_args(&main_ref, uid, gid, cfg)?;
+            (b, r)
+        }
+        Runtime::Codex => {
+            let main_ref = format!("{CODEX_CONTAINER_NAME}:latest");
+            let b = build_codex_main_command(&main_ref, &base_ref, &uname, uid, gid, ctx_path, cfg);
+            let r = run_codex_command_args(&main_ref, uid, gid, cfg)?;
             (b, r)
         }
     };
@@ -351,6 +369,101 @@ fn run_claude_command_args(
     // mounted as a file so changes made inside the container are written back.
     cmd.push(s("--volume"));
     cmd.push(format!("{claude_json}:{claude_json}"));
+
+    for (host, container) in &cfg.volumes {
+        cmd.push(s("--volume"));
+        cmd.push(format!("{host}:{container}"));
+    }
+    for (key, val) in &cfg.env_vars {
+        cmd.push(s("--env"));
+        cmd.push(format!("{key}={val}"));
+    }
+
+    for key in ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPEN_ROUTER_KEY"] {
+        cmd.push(s("--env"));
+        cmd.push(format!("{key}={}", std::env::var(key).unwrap_or_default()));
+    }
+
+    cmd.push(s("--workdir"));
+    cmd.push(cfg.workdir.clone());
+    cmd.push(s(main_ref));
+    cmd.extend(cfg.container_args.iter().cloned());
+
+    Ok(cmd)
+}
+
+// ---------------------------------------------------------------------------
+// Command builders — codex runtime
+// ---------------------------------------------------------------------------
+
+fn build_codex_main_command(
+    main_ref: &str,
+    base_ref: &str,
+    uname: &str,
+    uid: u32,
+    gid: u32,
+    ctx_path: &str,
+    cfg: &RunConfig,
+) -> Vec<String> {
+    let mut cmd = vec![
+        s("docker"),
+        s("build"),
+        s("--tag"),
+        s(main_ref),
+        s("--file"),
+        format!("{ctx_path}/Dockerfile.codex"),
+        s("--build-arg"),
+        format!("BASE_IMAGE={base_ref}"),
+        s("--build-arg"),
+        format!("USER_UID={uid}"),
+        s("--build-arg"),
+        format!("USER_GID={gid}"),
+        s("--build-arg"),
+        format!("UNAME={uname}"),
+    ];
+    if cfg.no_cache {
+        cmd.push(s("--no-cache"));
+    }
+    if cfg.debug {
+        cmd.push(s("--debug"));
+    }
+    if cfg.quiet {
+        cmd.push(s("--quiet"));
+    }
+    cmd.push(s(ctx_path));
+    cmd
+}
+
+fn run_codex_command_args(
+    main_ref: &str,
+    uid: u32,
+    gid: u32,
+    cfg: &RunConfig,
+) -> Result<Vec<String>, String> {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+    let codex_dir = format!("{home}/.codex");
+    fs::create_dir_all(&codex_dir).map_err(|e| format!("failed to create {codex_dir}: {e}"))?;
+
+    let mut cmd = vec![
+        s("docker"),
+        s("run"),
+        s("--user"),
+        format!("{uid}:{gid}"),
+        s("--interactive"),
+        s("--tty"),
+    ];
+    if cfg.ephemeral {
+        cmd.push(s("--rm"));
+    }
+    cmd.push(s("--cap-drop=ALL"));
+    cmd.push(s("--security-opt=no-new-privileges"));
+    if cfg.debug {
+        cmd.push(s("--debug"));
+    }
+
+    // Codex config/data dir is always mounted so settings and history persist.
+    cmd.push(s("--volume"));
+    cmd.push(format!("{codex_dir}:{codex_dir}"));
 
     for (host, container) in &cfg.volumes {
         cmd.push(s("--volume"));

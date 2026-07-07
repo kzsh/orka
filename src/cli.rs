@@ -8,6 +8,8 @@ pub enum Runtime {
     Pi,
     /// Anthropic claude-code
     Claude,
+    /// OpenAI codex
+    Codex,
 }
 
 #[derive(Parser, Debug)]

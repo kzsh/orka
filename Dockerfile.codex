@@ -1,0 +1,47 @@
+# The base image carries the (slow-changing) apt dependencies and is built
+# from Dockerfile.base. Keeping it separate means a --no-cache rebuild here
+# does not re-fetch all the apt packages.
+ARG BASE_IMAGE=pita-base:latest
+FROM ${BASE_IMAGE}
+
+ARG USER_UID=1000
+ARG USER_GID=1000
+ARG UNAME=appuser
+ARG VERSION=latest
+
+# Install the codex binary as root before switching to the unprivileged user.
+# We download the pre-built musl binary directly from GitHub releases — no npm
+# or node required.  jq is available from the base image.
+RUN set -eux && \
+    ARCH=$(uname -m) && \
+    case "$ARCH" in \
+      x86_64)  TARGET="x86_64-unknown-linux-musl" ;; \
+      aarch64) TARGET="aarch64-unknown-linux-musl" ;; \
+      *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; \
+    esac && \
+    if [ "$VERSION" = "latest" ]; then \
+      TAG=$(curl -fsSL https://api.github.com/repos/openai/codex/releases/latest \
+            | jq -r .tag_name); \
+    else \
+      TAG="v${VERSION}"; \
+    fi && \
+    curl -fsSL "https://github.com/openai/codex/releases/download/${TAG}/codex-${TARGET}.tar.gz" \
+      | tar -xz -C /tmp && \
+    mv "/tmp/codex-${TARGET}" /usr/local/bin/codex && \
+    chmod +x /usr/local/bin/codex && \
+    codex --version
+
+# Create a new group and user with the specified IDs
+RUN groupadd -g $USER_GID -o $UNAME && \
+    useradd -m -u $USER_UID -g $USER_GID -o -s /bin/bash $UNAME
+
+RUN chown -R "$USER_UID:$USER_GID" /home/$UNAME
+
+WORKDIR "/home/$UNAME"
+
+USER $UNAME
+
+ENV HOME="/home/$UNAME"
+
+COPY ./entrypoint.codex.sh /usr/local/bin/entrypoint.sh
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
