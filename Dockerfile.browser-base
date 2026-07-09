@@ -1,0 +1,65 @@
+# Intermediate layer between the apt base and the final pi image.
+# Installs agent-browser and downloads its Chromium binary into /opt/browser-cache
+# so that rebuilding the final image (to pull the latest pi) does not trigger a
+# fresh npm install or a Chromium re-download every time.
+#
+# Rebuild this image only when you want a newer version of agent-browser.
+
+ARG BASE_IMAGE=orka-base:latest
+FROM ${BASE_IMAGE}
+
+# Chromium system library dependencies.  Must run as root.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      libatk1.0-0 \
+      libatk-bridge2.0-0 \
+      libatspi2.0-0 \
+      libcairo2 \
+      libcups2 \
+      libdbus-1-3 \
+      libdrm2 \
+      libgbm1 \
+      libgdk-pixbuf-2.0-0 \
+      libglib2.0-0 \
+      libgtk-3-0 \
+      libnspr4 \
+      libnss3 \
+      libpango-1.0-0 \
+      libpangocairo-1.0-0 \
+      libwayland-client0 \
+      libx11-6 \
+      libx11-xcb1 \
+      libxcb1 \
+      libxcb-dri3-0 \
+      libxcomposite1 \
+      libxcursor1 \
+      libxdamage1 \
+      libxext6 \
+      libxfixes3 \
+      libxi6 \
+      libxkbcommon0 \
+      libxrandr2 \
+      libxrender1 \
+      libxshmfence1 \
+      libxss1 \
+      libxtst6 \
+      libasound2 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create stable, home-independent directories for the bun global install and
+# the Chromium binary, then hand ownership to the bun user so the install steps
+# below can write to them without root.
+RUN mkdir -p /opt/pi-bun /opt/browser-cache \
+    && chown bun:bun /opt/pi-bun /opt/browser-cache
+
+USER bun
+ENV HOME="/home/bun"
+ENV BUN_INSTALL="/opt/pi-bun"
+ENV BUN_INSTALL_BIN="/opt/pi-bun/bin"
+ENV PATH="/opt/pi-bun/bin:$PATH"
+
+# Point Playwright (used by agent-browser) at a fixed path so Chromium lands
+# in the image at a location independent of the runtime user's home directory.
+ENV PLAYWRIGHT_BROWSERS_PATH="/opt/browser-cache"
+
+RUN bun install --global agent-browser && \
+    agent-browser install

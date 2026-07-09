@@ -11,6 +11,7 @@ use crate::cli::Runtime;
 // contains Cargo.toml and the Dockerfiles).
 const DOCKERFILE: &str = include_str!("../Dockerfile");
 const DOCKERFILE_BASE: &str = include_str!("../Dockerfile.base");
+const DOCKERFILE_BROWSER_BASE: &str = include_str!("../Dockerfile.browser-base");
 const DOCKERFILE_CLAUDE: &str = include_str!("../Dockerfile.claude");
 const DOCKERFILE_CODEX: &str = include_str!("../Dockerfile.codex");
 const ENTRYPOINT_SH: &str = include_str!("../entrypoint.sh");
@@ -18,6 +19,7 @@ const ENTRYPOINT_CLAUDE_SH: &str = include_str!("../entrypoint.claude.sh");
 const ENTRYPOINT_CODEX_SH: &str = include_str!("../entrypoint.codex.sh");
 
 const BASE_CONTAINER_NAME: &str = "orka-base";
+const BROWSER_BASE_CONTAINER_NAME: &str = "orka-browser-base";
 const PI_CONTAINER_NAME: &str = "orka";
 const CLAUDE_CONTAINER_NAME: &str = "orka-claude";
 const CODEX_CONTAINER_NAME: &str = "orka-codex";
@@ -57,6 +59,12 @@ fn write_build_context() -> Result<TempDir, String> {
     fs::write(dir.path().join("Dockerfile.base"), DOCKERFILE_BASE)
         .map_err(|e| format!("failed to write Dockerfile.base to build context: {e}"))?;
 
+    fs::write(
+        dir.path().join("Dockerfile.browser-base"),
+        DOCKERFILE_BROWSER_BASE,
+    )
+    .map_err(|e| format!("failed to write Dockerfile.browser-base to build context: {e}"))?;
+
     fs::write(dir.path().join("Dockerfile.claude"), DOCKERFILE_CLAUDE)
         .map_err(|e| format!("failed to write Dockerfile.claude to build context: {e}"))?;
 
@@ -93,6 +101,7 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
         .ok_or_else(|| "temp build context path contains non-UTF-8 characters".to_string())?;
 
     let base_ref = format!("{BASE_CONTAINER_NAME}:latest");
+    let browser_base_ref = format!("{BROWSER_BASE_CONTAINER_NAME}:latest");
     let uid = current_uid();
     let gid = current_gid();
     let uname = std::env::var("USER")
@@ -101,11 +110,35 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
 
     let base_build = build_base_command(&base_ref, ctx_path, cfg);
 
+    // For pi with browser enabled, build the intermediate browser-base layer
+    // before the main image.  This layer installs agent-browser and downloads
+    // Chromium; it is not rebuilt with --no-cache so it stays cached across
+    // pi version upgrades.
+    let browser_base_build = if matches!(cfg.runtime, Runtime::Pi) && !cfg.no_browser {
+        Some(build_browser_base_command(
+            &browser_base_ref,
+            &base_ref,
+            ctx_path,
+            cfg,
+        ))
+    } else {
+        None
+    };
+
+    // The pi main image builds FROM browser-base when browser support is
+    // enabled, FROM the plain apt-base otherwise.
+    let pi_base_ref = if cfg.no_browser {
+        base_ref.clone()
+    } else {
+        browser_base_ref.clone()
+    };
+
     let (main_build, run_cmd) = match cfg.runtime {
         Runtime::Pi => {
             let tag = cfg.harness_version.as_deref().unwrap_or("latest");
             let main_ref = format!("{PI_CONTAINER_NAME}:{tag}");
-            let b = build_pi_main_command(&main_ref, &base_ref, &uname, uid, gid, ctx_path, cfg);
+            let b =
+                build_pi_main_command(&main_ref, &pi_base_ref, &uname, uid, gid, ctx_path, cfg);
             let r = run_pi_command_args(&main_ref, uid, gid, cfg)?;
             (b, r)
         }
@@ -118,7 +151,8 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
         }
         Runtime::Codex => {
             let main_ref = format!("{CODEX_CONTAINER_NAME}:latest");
-            let b = build_codex_main_command(&main_ref, &base_ref, &uname, uid, gid, ctx_path, cfg);
+            let b =
+                build_codex_main_command(&main_ref, &base_ref, &uname, uid, gid, ctx_path, cfg);
             let r = run_codex_command_args(&main_ref, uid, gid, cfg)?;
             (b, r)
         }
@@ -126,12 +160,18 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
 
     if cfg.dry_run {
         print_dry_run("base image build", &base_build);
+        if let Some(ref bbb) = browser_base_build {
+            print_dry_run("browser-base image build", bbb);
+        }
         print_dry_run("main image build", &main_build);
         print_dry_run("container run", &run_cmd);
         return Ok(());
     }
 
     exec(&base_build)?;
+    if let Some(ref bbb) = browser_base_build {
+        exec(bbb)?;
+    }
     exec(&main_build)?;
     exec(&run_cmd)?;
 
@@ -150,6 +190,39 @@ fn build_base_command(base_ref: &str, ctx_path: &str, cfg: &RunConfig) -> Vec<St
         s(base_ref),
         s("--file"),
         format!("{ctx_path}/Dockerfile.base"),
+    ];
+    if cfg.debug {
+        cmd.push(s("--debug"));
+    }
+    if cfg.quiet {
+        cmd.push(s("--quiet"));
+    }
+    cmd.push(s(ctx_path));
+    cmd
+}
+
+// ---------------------------------------------------------------------------
+// Command builders — browser-base (pi only)
+// ---------------------------------------------------------------------------
+
+/// Builds the intermediate orka-browser-base image that contains agent-browser
+/// and its Chromium download.  Like the apt base, this is never rebuilt with
+/// --no-cache so it stays warm across pi version upgrades.
+fn build_browser_base_command(
+    browser_base_ref: &str,
+    base_ref: &str,
+    ctx_path: &str,
+    cfg: &RunConfig,
+) -> Vec<String> {
+    let mut cmd = vec![
+        s("docker"),
+        s("build"),
+        s("--tag"),
+        s(browser_base_ref),
+        s("--file"),
+        format!("{ctx_path}/Dockerfile.browser-base"),
+        s("--build-arg"),
+        format!("BASE_IMAGE={base_ref}"),
     ];
     if cfg.debug {
         cmd.push(s("--debug"));
@@ -191,10 +264,6 @@ fn build_pi_main_command(
     if let Some(ref ver) = cfg.harness_version {
         cmd.push(s("--build-arg"));
         cmd.push(format!("VERSION={ver}"));
-    }
-    if !cfg.no_browser {
-        cmd.push(s("--build-arg"));
-        cmd.push(s("INSTALL_AGENT_BROWSER=true"));
     }
     if cfg.no_cache {
         cmd.push(s("--no-cache"));
@@ -668,11 +737,13 @@ mod tests {
     }
 
     #[test]
-    fn pi_build_installs_browser_by_default() {
+    fn pi_build_uses_browser_base_by_default() {
+        // When browser support is enabled (the default), the main pi image
+        // should build FROM orka-browser-base, not orka-base.
         let cfg = make_cfg(Runtime::Pi);
         let cmd = build_pi_main_command(
             "orka:latest",
-            "orka-base:latest",
+            "orka-browser-base:latest",
             "user",
             1000,
             1000,
@@ -680,11 +751,12 @@ mod tests {
             &cfg,
         );
         let joined = cmd.join(" ");
-        assert!(joined.contains("INSTALL_AGENT_BROWSER=true"));
+        assert!(joined.contains("BASE_IMAGE=orka-browser-base:latest"));
+        assert!(!joined.contains("INSTALL_AGENT_BROWSER"));
     }
 
     #[test]
-    fn pi_build_skips_browser_when_no_browser() {
+    fn pi_build_uses_plain_base_when_no_browser() {
         let mut cfg = make_cfg(Runtime::Pi);
         cfg.no_browser = true;
         let cmd = build_pi_main_command(
@@ -697,7 +769,29 @@ mod tests {
             &cfg,
         );
         let joined = cmd.join(" ");
+        assert!(joined.contains("BASE_IMAGE=orka-base:latest"));
+        assert!(!joined.contains("orka-browser-base"));
         assert!(!joined.contains("INSTALL_AGENT_BROWSER"));
+    }
+
+    #[test]
+    fn browser_base_build_command_is_correct() {
+        let cfg = make_cfg(Runtime::Pi);
+        let cmd = build_browser_base_command(
+            "orka-browser-base:latest",
+            "orka-base:latest",
+            "/ctx",
+            &cfg,
+        );
+        assert_eq!(cmd[0], "docker");
+        assert_eq!(cmd[1], "build");
+        assert!(cmd.contains(&"orka-browser-base:latest".to_string()));
+        let file_idx = cmd.iter().position(|a| a == "--file").unwrap();
+        assert!(cmd[file_idx + 1].ends_with("Dockerfile.browser-base"));
+        let joined = cmd.join(" ");
+        assert!(joined.contains("BASE_IMAGE=orka-base:latest"));
+        // browser-base is never rebuilt with --no-cache
+        assert!(!joined.contains("--no-cache"));
     }
 
     #[test]
@@ -714,6 +808,7 @@ mod tests {
         );
         let joined = cmd.join(" ");
         assert!(!joined.contains("INSTALL_AGENT_BROWSER"));
+        assert!(!joined.contains("browser-base"));
     }
 
     #[test]

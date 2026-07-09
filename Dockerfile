@@ -4,56 +4,16 @@
 ARG BASE_IMAGE=orka-base:latest
 FROM ${BASE_IMAGE}
 
+# The browser-base intermediate layer ends with USER bun; reclaim root so the
+# setup steps below (groupadd, useradd, chown) have the necessary permissions.
+USER root
+
 # Define build arguments for UID and GID with default values
 
 ARG USER_UID=1000
 ARG USER_GID=1000
 ARG UNAME=appuser
 ARG VERSION=latest
-
-# Set to "true" to install the agent-browser extension and its Chromium dependency.
-# Omit or set to "false" to skip (saves a large download).
-ARG INSTALL_AGENT_BROWSER=false
-
-# Optional: install Chromium's system library dependencies.
-# Must run as root before the USER switch.
-RUN if [ "$INSTALL_AGENT_BROWSER" = "true" ]; then \
-      apt-get update && apt-get install -y --no-install-recommends \
-        libatk1.0-0 \
-        libatk-bridge2.0-0 \
-        libatspi2.0-0 \
-        libcairo2 \
-        libcups2 \
-        libdbus-1-3 \
-        libdrm2 \
-        libgbm1 \
-        libgdk-pixbuf-2.0-0 \
-        libglib2.0-0 \
-        libgtk-3-0 \
-        libnspr4 \
-        libnss3 \
-        libpango-1.0-0 \
-        libpangocairo-1.0-0 \
-        libwayland-client0 \
-        libx11-6 \
-        libx11-xcb1 \
-        libxcb1 \
-        libxcb-dri3-0 \
-        libxcomposite1 \
-        libxcursor1 \
-        libxdamage1 \
-        libxext6 \
-        libxfixes3 \
-        libxi6 \
-        libxkbcommon0 \
-        libxrandr2 \
-        libxrender1 \
-        libxshmfence1 \
-        libxss1 \
-        libxtst6 \
-        libasound2 \
-      && rm -rf /var/lib/apt/lists/*; \
-    fi
 
 # Create a new group and user with the specified IDs
 RUN groupadd -g $USER_GID -o $UNAME && \
@@ -63,7 +23,12 @@ RUN chown -R "$USER_UID:$USER_GID" /home/$UNAME
 
 # Isolated install root for pi and its bun globals.  Lives outside $HOME so
 # that mounted presets (e.g. bun, uv) can never shadow it.
-RUN mkdir -p /opt/pi-bun && chown "$USER_UID:$USER_GID" /opt/pi-bun
+# Ensure /opt/pi-bun exists and belongs to the runtime user.  When the base
+# image is orka-browser-base the directory is already populated; chown -R
+# transfers ownership from the build-time bun user to the runtime user.
+# /opt/browser-cache holds the Chromium binary from browser-base; same logic.
+RUN mkdir -p /opt/pi-bun /opt/browser-cache \
+    && chown -R "$USER_UID:$USER_GID" /opt/pi-bun /opt/browser-cache
 
 WORKDIR "/home/$UNAME"
 
@@ -83,13 +48,6 @@ ENV PATH="/opt/pi-bun/bin:$PATH"
 # entrypoint script don't bust the expensive bun install cache layer.
 RUN bun install --global @earendil-works/pi-coding-agent@${VERSION} && \
     which pi
-
-# Optional: install the agent-browser extension and download Chromium.
-# Activated by passing --build-arg INSTALL_AGENT_BROWSER=true.
-RUN if [ "$INSTALL_AGENT_BROWSER" = "true" ]; then \
-      bun install --global agent-browser && \
-      agent-browser install; \
-    fi
 
 COPY ./entrypoint.sh /usr/local/bin/entrypoint.sh
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
