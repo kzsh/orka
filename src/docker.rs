@@ -36,9 +36,6 @@ pub struct RunConfig {
     /// When true, skips passing `INSTALL_AGENT_BROWSER=true` to the pi image build.
     /// Ignored for the claude runtime.
     pub no_browser: bool,
-    /// When true, mounts a tmpfs over ~/.pi/agent/extensions to hide all extensions.
-    /// Ignored for the claude runtime.
-    pub no_extensions: bool,
     /// Resolved `(host_path, container_path)` volume pairs.
     pub volumes: Vec<(String, String)>,
     /// Resolved `(key, value)` environment variable pairs.
@@ -320,14 +317,6 @@ fn run_pi_command_args(
     if !cfg.no_browser {
         cmd.push(s("--volume"));
         cmd.push(format!("{agent_browser_dir}:{agent_browser_dir}"));
-    }
-
-    // Shadow the extensions directory with an empty tmpfs so no auto-discovered
-    // extensions load. The tmpfs mount is more specific than the parent bind
-    // mount, so it wins regardless of order.
-    if cfg.no_extensions {
-        cmd.push(s("--tmpfs"));
-        cmd.push(format!("{pi_dir}/agent/extensions"));
     }
 
     for (host, container) in &cfg.volumes {
@@ -689,7 +678,6 @@ mod tests {
             ephemeral: false,
             harness_version: None,
             no_browser: false,
-            no_extensions: false,
             volumes: vec![],
             env_vars: vec![],
             workdir: "/work".to_string(),

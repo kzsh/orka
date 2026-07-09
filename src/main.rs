@@ -107,7 +107,6 @@ fn run() -> Result<(), String> {
         ephemeral: cli.ephemeral,
         harness_version: cli.harness_version,
         no_browser: cli.no_browser,
-        no_extensions: cli.no_extensions,
         volumes,
         env_vars,
         workdir,
