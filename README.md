@@ -2,7 +2,11 @@
 
 **Latest:** 2026-07-11
 
-Runs an AI coding agent (pi, claude-code, or Codex) inside a Docker container. The container image is built on first run and cached for subsequent runs.
+orka runs AI coding agents inside Docker containers. Each session gets only the files and credentials you explicitly hand it — the agent cannot reach the rest of your filesystem or your shell environment unless you mount them in. This gives you contained, reproducible agent sessions without giving agents unrestricted access to your home directory.
+
+Three runtimes are supported: [pi](https://pi.earendil.works), [claude-code](https://docs.anthropic.com/en/docs/claude-code), and [Codex](https://openai.com/index/openai-codex/). The container image is built on first run and cached for subsequent runs.
+
+See [getting started](getting-started.md) to set up API keys and run your first session.
 
 ## Install
 
