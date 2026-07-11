@@ -40,11 +40,16 @@ fn run() -> Result<(), String> {
         return Ok(());
     }
 
-    // Base volumes: current directory (when not running from $HOME) and
-    // ~/.agents (when that directory exists).
+    // Base volumes: a single file (when --file is given), the current directory
+    // (when not running from $HOME), or nothing (when CWD is $HOME).
+    // ~/.agents is always appended when it exists.
     let mut volumes: Vec<(String, String)> = Vec::new();
 
-    let workdir = if cwd != home {
+    let workdir = if let Some(ref fp) = cli.file {
+        let (host_path, parent_dir) = resolve_file_volume(fp, &cwd)?;
+        volumes.push((host_path.clone(), host_path));
+        parent_dir
+    } else if cwd != home {
         volumes.push((cwd.clone(), cwd.clone()));
         cwd.clone()
     } else {
@@ -116,6 +121,34 @@ fn run() -> Result<(), String> {
     docker::build_and_run(&run_cfg)
 }
 
+/// Resolve a `--file` argument to an absolute host path and its parent
+/// directory, both as strings ready to pass to Docker.
+///
+/// `cwd` is used as the base for relative paths.  Returns
+/// `(absolute_file_path, parent_dir)` on success.
+fn resolve_file_volume(file_path: &Path, cwd: &str) -> Result<(String, String), String> {
+    let candidate = if file_path.is_absolute() {
+        file_path.to_path_buf()
+    } else {
+        Path::new(cwd).join(file_path)
+    };
+
+    let abs = fs::canonicalize(&candidate)
+        .map_err(|e| format!("--file: cannot resolve {}: {e}", candidate.display()))?;
+
+    if !abs.is_file() {
+        return Err(format!("--file: not a regular file: {}", abs.display()));
+    }
+
+    let host_str = abs.to_string_lossy().to_string();
+    let parent = abs
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| "/".to_string());
+
+    Ok((host_str, parent))
+}
+
 fn require_config_file(path: &Path) -> Result<(), String> {
     if !path.exists() {
         return Err(format!(
@@ -149,6 +182,45 @@ fn split_once_eq(s: &str) -> (&str, &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs::File;
+
+    #[test]
+    fn resolve_file_volume_absolute_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("foo.txt");
+        File::create(&file).unwrap();
+
+        let (host, parent) = resolve_file_volume(&file, "/irrelevant").unwrap();
+        assert_eq!(host, file.to_string_lossy());
+        assert_eq!(parent, dir.path().to_string_lossy());
+    }
+
+    #[test]
+    fn resolve_file_volume_relative_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("bar.txt");
+        File::create(&file).unwrap();
+
+        let cwd = dir.path().to_str().unwrap();
+        let (host, parent) = resolve_file_volume(Path::new("bar.txt"), cwd).unwrap();
+        assert_eq!(host, file.to_string_lossy());
+        assert_eq!(parent, cwd);
+    }
+
+    #[test]
+    fn resolve_file_volume_nonexistent_returns_err() {
+        let result = resolve_file_volume(Path::new("/no/such/file.txt"), "/tmp");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("--file:"));
+    }
+
+    #[test]
+    fn resolve_file_volume_directory_returns_err() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = resolve_file_volume(dir.path(), "/tmp");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not a regular file"));
+    }
 
     #[test]
     fn split_colon_normal() {

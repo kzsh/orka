@@ -59,6 +59,12 @@ pub struct Cli {
     #[arg(long)]
     pub no_browser: bool,
 
+    /// Mount only this file into the container instead of the entire working
+    /// directory. The file is mounted at the same absolute path it has on the
+    /// host; the container workdir is set to the file's parent directory.
+    #[arg(long, short = 'f', value_name = "FILE")]
+    pub file: Option<std::path::PathBuf>,
+
     /// Arguments forwarded verbatim to the container (passed to the agent).
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     pub container_args: Vec<String>,
