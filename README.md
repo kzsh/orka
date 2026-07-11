@@ -6,7 +6,7 @@ orka runs AI coding agents inside Docker containers. Each session gets only the 
 
 Three runtimes are supported: [pi](https://pi.earendil.works), [claude-code](https://docs.anthropic.com/en/docs/claude-code), and [Codex](https://openai.com/index/openai-codex/). The container image is built on first run and cached for subsequent runs.
 
-See [getting started](getting-started.md) to set up API keys and run your first session.
+See [getting started](getting-started.md) to set up API keys and run your first session, or [what is orka](what-is-orka.md) for rationale and use cases.
 
 ## Install
 
@@ -65,10 +65,10 @@ orka --scratchpad my-task
 | `--scratchpad <NAME>` | Use a named persistent scratch directory as the workdir. |
 | `--harness-version` / `-v` | Pin the agent version to install (pi only). |
 | `--no-browser` | Skip installing agent-browser and Chromium (pi only). |
-| `--ephemeral` | Remove the container on exit. |
+| `--preserve-container` | Keep the container after it exits instead of removing it automatically. |
 | `--no-cache` | Rebuild the agent image without Docker layer cache. |
 | `--dry-run` | Print Docker commands without running them. |
-| `--quiet` / `-q` | Suppress build output. |
+| `--verbose` | Show Docker build output (suppressed by default). |
 
 ## Presets
 
