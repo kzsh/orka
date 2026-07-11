@@ -45,7 +45,15 @@ fn run() -> Result<(), String> {
     // ~/.agents is always appended when it exists.
     let mut volumes: Vec<(String, String)> = Vec::new();
 
-    let workdir = if !cli.file.is_empty() {
+    let workdir = if cli.tmp {
+        let tmp = make_temp_workdir()?;
+        volumes.push((tmp.clone(), tmp.clone()));
+        tmp
+    } else if let Some(ref name) = cli.scratchpad {
+        let scratch = scratchpad_dir(name, &home)?;
+        volumes.push((scratch.clone(), scratch.clone()));
+        scratch
+    } else if !cli.file.is_empty() {
         for fp in &cli.file {
             let host_path = resolve_file_path(fp, &cwd)?;
             volumes.push((host_path.clone(), host_path));
@@ -109,6 +117,8 @@ fn run() -> Result<(), String> {
         env_vars.push((key.to_string(), expand::expand_value(val_raw)));
     }
 
+    // no_browser is passed through; tmp/scratchpad are already resolved into
+    // volumes and workdir above.
     let run_cfg = RunConfig {
         runtime: cli.runtime,
         no_cache: cli.no_cache,
@@ -125,6 +135,42 @@ fn run() -> Result<(), String> {
     };
 
     docker::build_and_run(&run_cfg)
+}
+
+/// Create a temporary directory via `mktemp -d` and return its path.
+///
+/// The directory is not cleaned up automatically; it persists after the
+/// container exits so the user can inspect any output left there.
+fn make_temp_workdir() -> Result<String, String> {
+    let out = std::process::Command::new("mktemp")
+        .arg("-d")
+        .output()
+        .map_err(|e| format!("mktemp -d failed to launch: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "mktemp -d exited with status {}",
+            out.status.code().unwrap_or(-1)
+        ));
+    }
+    let path = String::from_utf8(out.stdout)
+        .map_err(|e| format!("mktemp -d output is not UTF-8: {e}"))?;
+    Ok(path.trim().to_string())
+}
+
+/// Resolve and create (if necessary) the named scratchpad directory.
+///
+/// Follows the XDG Base Directory Specification: respects `$XDG_DATA_HOME`
+/// when set, otherwise falls back to `$HOME/.local/share`.
+/// Path: `$XDG_DATA_HOME/orka/scratch/<name>`
+fn scratchpad_dir(name: &str, home: &str) -> Result<String, String> {
+    let data_home = std::env::var("XDG_DATA_HOME")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| format!("{home}/.local/share"));
+    let path = format!("{data_home}/orka/scratch/{name}");
+    fs::create_dir_all(&path)
+        .map_err(|e| format!("failed to create scratchpad directory {path}: {e}"))?;
+    Ok(path)
 }
 
 /// Resolve a `--file` argument to an absolute path string ready to pass to Docker.
@@ -270,5 +316,56 @@ mod tests {
     #[test]
     fn split_eq_no_equals() {
         assert_eq!(split_once_eq("NOVALUE"), ("NOVALUE", ""));
+    }
+
+    #[test]
+    fn make_temp_workdir_returns_existing_dir() {
+        let path = make_temp_workdir().unwrap();
+        let p = std::path::Path::new(&path);
+        assert!(p.exists(), "mktemp -d path does not exist: {path}");
+        assert!(p.is_dir(), "mktemp -d path is not a directory: {path}");
+        // Clean up so we don't litter /tmp.
+        fs::remove_dir(&path).unwrap();
+    }
+
+    #[test]
+    fn scratchpad_dir_creates_directory() {
+        // XDG_DATA_HOME unset → falls back to $HOME/.local/share
+        let base = tempfile::tempdir().unwrap();
+        let home = base.path().to_str().unwrap();
+        std::env::remove_var("XDG_DATA_HOME");
+        let result = scratchpad_dir("test-pad", home).unwrap();
+        let expected = format!("{home}/.local/share/orka/scratch/test-pad");
+        assert_eq!(result, expected);
+        assert!(std::path::Path::new(&result).is_dir());
+    }
+
+    #[test]
+    fn scratchpad_dir_is_idempotent() {
+        let base = tempfile::tempdir().unwrap();
+        let home = base.path().to_str().unwrap();
+        let r1 = scratchpad_dir("my-pad", home).unwrap();
+        let r2 = scratchpad_dir("my-pad", home).unwrap();
+        assert_eq!(r1, r2);
+        assert!(std::path::Path::new(&r1).is_dir());
+    }
+
+    #[test]
+    fn scratchpad_dir_honours_xdg_data_home() {
+        let base = tempfile::tempdir().unwrap();
+        let xdg = base.path().join("xdg");
+        // Temporarily override XDG_DATA_HOME.  Tests run in the same process so
+        // we restore it afterwards to avoid polluting other tests.
+        let prev = std::env::var("XDG_DATA_HOME").ok();
+        std::env::set_var("XDG_DATA_HOME", &xdg);
+        let result = scratchpad_dir("xpad", "/irrelevant");
+        match prev {
+            Some(v) => std::env::set_var("XDG_DATA_HOME", v),
+            None => std::env::remove_var("XDG_DATA_HOME"),
+        }
+        let path = result.unwrap();
+        let expected = format!("{}/orka/scratch/xpad", xdg.display());
+        assert_eq!(path, expected);
+        assert!(std::path::Path::new(&path).is_dir());
     }
 }

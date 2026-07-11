@@ -59,10 +59,21 @@ pub struct Cli {
     #[arg(long)]
     pub no_browser: bool,
 
+    /// Create a temporary directory with mktemp -d and use it as the container
+    /// workdir. The directory persists after the container exits.
+    /// Conflicts with --file and --scratchpad.
+    #[arg(long, conflicts_with_all = ["file", "scratchpad"])]
+    pub tmp: bool,
+
+    /// Create (or reuse) ~/.local/share/orka/scratch/<NAME> and use it as the
+    /// container workdir. Conflicts with --file and --tmp.
+    #[arg(long, value_name = "NAME", conflicts_with_all = ["file", "tmp"])]
+    pub scratchpad: Option<String>,
+
     /// Mount only specific files into the container instead of the entire working
     /// directory. Repeatable. Each file is mounted at the same absolute path it
     /// has on the host. The container workdir is set to the invoking directory.
-    #[arg(long, short = 'f', value_name = "FILE")]
+    #[arg(long, short = 'f', value_name = "FILE", conflicts_with_all = ["tmp", "scratchpad"])]
     pub file: Vec<std::path::PathBuf>,
 
     /// Arguments forwarded verbatim to the container (passed to the agent).
