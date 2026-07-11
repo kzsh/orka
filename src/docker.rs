@@ -31,7 +31,7 @@ pub struct RunConfig {
     pub dry_run: bool,
     pub quiet: bool,
     pub debug: bool,
-    pub ephemeral: bool,
+    pub preserve_container: bool,
     pub harness_version: Option<String>,
     /// When true, skips passing `INSTALL_AGENT_BROWSER=true` to the pi image build.
     /// Ignored for the claude runtime.
@@ -299,7 +299,7 @@ fn run_pi_command_args(
         s("--interactive"),
         s("--tty"),
     ];
-    if cfg.ephemeral {
+    if !cfg.preserve_container {
         cmd.push(s("--rm"));
     }
     cmd.push(s("--cap-drop=ALL"));
@@ -410,7 +410,7 @@ fn run_claude_command_args(
         s("--interactive"),
         s("--tty"),
     ];
-    if cfg.ephemeral {
+    if !cfg.preserve_container {
         cmd.push(s("--rm"));
     }
     cmd.push(s("--cap-drop=ALL"));
@@ -510,7 +510,7 @@ fn run_codex_command_args(
         s("--interactive"),
         s("--tty"),
     ];
-    if cfg.ephemeral {
+    if !cfg.preserve_container {
         cmd.push(s("--rm"));
     }
     cmd.push(s("--cap-drop=ALL"));
@@ -675,7 +675,7 @@ mod tests {
             dry_run: false,
             quiet: false,
             debug: false,
-            ephemeral: false,
+            preserve_container: false,
             harness_version: None,
             no_browser: false,
             volumes: vec![],

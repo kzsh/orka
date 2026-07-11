@@ -50,9 +50,9 @@ pub struct Cli {
     #[arg(long)]
     pub debug: bool,
 
-    /// Remove the container automatically after it exits (docker run --rm).
+    /// Keep the container after it exits instead of removing it automatically.
     #[arg(long)]
-    pub ephemeral: bool,
+    pub preserve_container: bool,
 
     /// Skip installing the agent-browser extension and Chromium (browser support is on by default).
     /// Applies to --runtime pi only.

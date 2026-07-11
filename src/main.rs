@@ -145,7 +145,7 @@ fn run() -> Result<(), String> {
         dry_run: cli.dry_run,
         quiet: cli.quiet,
         debug: cli.debug,
-        ephemeral: cli.ephemeral,
+        preserve_container: cli.preserve_container,
         harness_version: cli.harness_version,
         no_browser: cli.no_browser,
         volumes,
