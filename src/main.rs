@@ -45,10 +45,16 @@ fn run() -> Result<(), String> {
     // ~/.agents is always appended when it exists.
     let mut volumes: Vec<(String, String)> = Vec::new();
 
-    let workdir = if let Some(ref fp) = cli.file {
-        let (host_path, parent_dir) = resolve_file_volume(fp, &cwd)?;
-        volumes.push((host_path.clone(), host_path));
-        parent_dir
+    let workdir = if !cli.file.is_empty() {
+        for fp in &cli.file {
+            let host_path = resolve_file_path(fp, &cwd)?;
+            volumes.push((host_path.clone(), host_path));
+        }
+        // Multiple files may span different directories; use CWD as a stable
+        // anchor. Docker creates the workdir in the container if it doesn't
+        // exist as a mount, which is fine — the agent references files by their
+        // absolute paths.
+        cwd.clone()
     } else if cwd != home {
         volumes.push((cwd.clone(), cwd.clone()));
         cwd.clone()
@@ -121,12 +127,10 @@ fn run() -> Result<(), String> {
     docker::build_and_run(&run_cfg)
 }
 
-/// Resolve a `--file` argument to an absolute host path and its parent
-/// directory, both as strings ready to pass to Docker.
+/// Resolve a `--file` argument to an absolute path string ready to pass to Docker.
 ///
-/// `cwd` is used as the base for relative paths.  Returns
-/// `(absolute_file_path, parent_dir)` on success.
-fn resolve_file_volume(file_path: &Path, cwd: &str) -> Result<(String, String), String> {
+/// `cwd` is used as the base for relative paths.
+fn resolve_file_path(file_path: &Path, cwd: &str) -> Result<String, String> {
     let candidate = if file_path.is_absolute() {
         file_path.to_path_buf()
     } else {
@@ -140,13 +144,7 @@ fn resolve_file_volume(file_path: &Path, cwd: &str) -> Result<(String, String), 
         return Err(format!("--file: not a regular file: {}", abs.display()));
     }
 
-    let host_str = abs.to_string_lossy().to_string();
-    let parent = abs
-        .parent()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|| "/".to_string());
-
-    Ok((host_str, parent))
+    Ok(abs.to_string_lossy().to_string())
 }
 
 fn require_config_file(path: &Path) -> Result<(), String> {
@@ -185,41 +183,55 @@ mod tests {
     use std::fs::File;
 
     #[test]
-    fn resolve_file_volume_absolute_path() {
+    fn resolve_file_path_absolute() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("foo.txt");
         File::create(&file).unwrap();
 
-        let (host, parent) = resolve_file_volume(&file, "/irrelevant").unwrap();
-        assert_eq!(host, file.to_string_lossy());
-        assert_eq!(parent, dir.path().to_string_lossy());
+        let result = resolve_file_path(&file, "/irrelevant").unwrap();
+        assert_eq!(result, file.to_string_lossy());
     }
 
     #[test]
-    fn resolve_file_volume_relative_path() {
+    fn resolve_file_path_relative() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("bar.txt");
         File::create(&file).unwrap();
 
         let cwd = dir.path().to_str().unwrap();
-        let (host, parent) = resolve_file_volume(Path::new("bar.txt"), cwd).unwrap();
-        assert_eq!(host, file.to_string_lossy());
-        assert_eq!(parent, cwd);
+        let result = resolve_file_path(Path::new("bar.txt"), cwd).unwrap();
+        assert_eq!(result, file.to_string_lossy());
     }
 
     #[test]
-    fn resolve_file_volume_nonexistent_returns_err() {
-        let result = resolve_file_volume(Path::new("/no/such/file.txt"), "/tmp");
+    fn resolve_file_path_nonexistent_returns_err() {
+        let result = resolve_file_path(Path::new("/no/such/file.txt"), "/tmp");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("--file:"));
     }
 
     #[test]
-    fn resolve_file_volume_directory_returns_err() {
+    fn resolve_file_path_directory_returns_err() {
         let dir = tempfile::tempdir().unwrap();
-        let result = resolve_file_volume(dir.path(), "/tmp");
+        let result = resolve_file_path(dir.path(), "/tmp");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("not a regular file"));
+    }
+
+    #[test]
+    fn resolve_file_path_multiple_files_same_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let f1 = dir.path().join("a.txt");
+        let f2 = dir.path().join("b.txt");
+        File::create(&f1).unwrap();
+        File::create(&f2).unwrap();
+
+        let r1 = resolve_file_path(&f1, "/irrelevant").unwrap();
+        let r2 = resolve_file_path(&f2, "/irrelevant").unwrap();
+        assert_eq!(r1, f1.to_string_lossy());
+        assert_eq!(r2, f2.to_string_lossy());
+        // Both paths should share the same parent — they're valid independent mounts.
+        assert_ne!(r1, r2);
     }
 
     #[test]

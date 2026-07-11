@@ -59,11 +59,11 @@ pub struct Cli {
     #[arg(long)]
     pub no_browser: bool,
 
-    /// Mount only this file into the container instead of the entire working
-    /// directory. The file is mounted at the same absolute path it has on the
-    /// host; the container workdir is set to the file's parent directory.
+    /// Mount only specific files into the container instead of the entire working
+    /// directory. Repeatable. Each file is mounted at the same absolute path it
+    /// has on the host. The container workdir is set to the invoking directory.
     #[arg(long, short = 'f', value_name = "FILE")]
-    pub file: Option<std::path::PathBuf>,
+    pub file: Vec<std::path::PathBuf>,
 
     /// Arguments forwarded verbatim to the container (passed to the agent).
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
