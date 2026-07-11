@@ -2,11 +2,13 @@
 
 **Latest:** 2026-07-11
 
-orka runs AI coding agents inside Docker containers. Each session gets only the files and credentials you explicitly hand it — the agent cannot reach the rest of your filesystem or your shell environment unless you mount them in. This gives you contained, reproducible agent sessions without giving agents unrestricted access to your home directory.
+Orka runs LLM coding agents inside containers. Each session gets only the file-system context you choose to mount. This gives you agent sessions that don't have unrestricted access to your home directory.
 
-Three runtimes are supported: [pi](https://pi.earendil.works), [claude-code](https://docs.anthropic.com/en/docs/claude-code), and [Codex](https://openai.com/index/openai-codex/). The container image is built on first run and cached for subsequent runs.
+Three runtimes are supported: [pi](https://pi.earendil.works), [claude-code](https://docs.anthropic.com/en/docs/claude-code), and [Codex](https://openai.com/index/openai-codex/). 
 
-See [getting started](getting-started.md) to set up API keys and run your first session, or [what is orka](what-is-orka.md) for rationale and use cases.
+The container image is built on each run first run and cached for subsequent runs. 
+
+See [getting started](getting-started.md), [what is orka](what-is-orka.md), or [how it works](how-it-works.md) for more details.
 
 ## Install
 
@@ -25,11 +27,10 @@ mv orka ~/.local/bin/
 | `orka-aarch64-unknown-linux-gnu` | Linux ARM64 (glibc) |
 | `orka-aarch64-unknown-linux-musl` | Linux ARM64 (static) |
 
-Prefer the `musl` variant unless you have a specific reason not to — it has no runtime dependencies.
 
 ## Usage
 
-Run orka from a project directory to mount it into the container and start the agent:
+Run `orka` from a project directory to mount it into the container and start the agent:
 
 ```sh
 orka
@@ -69,6 +70,7 @@ orka --scratchpad my-task
 | `--no-cache` | Rebuild the agent image without Docker layer cache. |
 | `--dry-run` | Print Docker commands without running them. |
 | `--verbose` | Show Docker build output (suppressed by default). |
+| `--print-license` | Print the license text and exit. |
 
 ## Presets
 
