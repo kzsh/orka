@@ -44,6 +44,8 @@ fn run() -> Result<(), String> {
     // (when not running from $HOME), or nothing (when CWD is $HOME).
     // ~/.agents is always appended when it exists.
     let mut volumes: Vec<(String, String)> = Vec::new();
+    // Resolved absolute paths of --file mounts; used to build the prompt snippet.
+    let mut mounted_files: Vec<String> = Vec::new();
 
     let workdir = if cli.tmp {
         let tmp = make_temp_workdir()?;
@@ -56,7 +58,8 @@ fn run() -> Result<(), String> {
     } else if !cli.file.is_empty() {
         for fp in &cli.file {
             let host_path = resolve_file_path(fp, &cwd)?;
-            volumes.push((host_path.clone(), host_path));
+            volumes.push((host_path.clone(), host_path.clone()));
+            mounted_files.push(host_path);
         }
         // Multiple files may span different directories; use CWD as a stable
         // anchor. Docker creates the workdir in the container if it doesn't
@@ -69,6 +72,16 @@ fn run() -> Result<(), String> {
     } else {
         home.clone()
     };
+
+    // Prepend a context snippet to the task prompt so the agent understands the
+    // constraints of this environment.  Only injected when a task is present;
+    // interactive sessions (no container_args) don't need it.
+    let mut container_args = cli.container_args;
+    if !container_args.is_empty() {
+        if let Some(snippet) = prompt_context_snippet(cli.tmp, cli.scratchpad.as_deref(), &mounted_files) {
+            container_args[0] = format!("{snippet}\n\n{}", container_args[0]);
+        }
+    }
 
     let agents_dir = format!("{home}/.agents");
     if Path::new(&agents_dir).is_dir() {
@@ -131,10 +144,44 @@ fn run() -> Result<(), String> {
         volumes,
         env_vars,
         workdir,
-        container_args: cli.container_args,
+        container_args,
     };
 
     docker::build_and_run(&run_cfg)
+}
+
+/// Build a context snippet that is prepended to the agent's task prompt
+/// whenever the invocation uses a constrained mount mode.
+///
+/// Returns `None` for the normal CWD-mount case where no extra context is needed.
+fn prompt_context_snippet(
+    is_tmp: bool,
+    scratchpad: Option<&str>,
+    mounted_files: &[String],
+) -> Option<String> {
+    const RESTRICTED: &str =
+        "You are running inside a Docker container with a restricted capability set \
+         (all Linux capabilities dropped, no new privileges).";
+
+    if is_tmp || scratchpad.is_some() {
+        Some(RESTRICTED.to_string())
+    } else if !mounted_files.is_empty() {
+        let list = mounted_files
+            .iter()
+            .map(|f| format!("  - {f}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        Some(format!(
+            "{RESTRICTED} \
+             Only the following specific files from the host are mounted into the container:\n\
+             {list}\n\
+             These files are available at their original absolute paths. \
+             You may write additional files to those directories, but anything not in the list \
+             above will not be persisted once the container exits."
+        ))
+    } else {
+        None
+    }
 }
 
 /// Create a temporary directory via `mktemp -d` and return its path.
@@ -316,6 +363,39 @@ mod tests {
     #[test]
     fn split_eq_no_equals() {
         assert_eq!(split_once_eq("NOVALUE"), ("NOVALUE", ""));
+    }
+
+    #[test]
+    fn prompt_context_snippet_none_for_normal_mode() {
+        assert!(prompt_context_snippet(false, None, &[]).is_none());
+    }
+
+    #[test]
+    fn prompt_context_snippet_tmp_contains_restricted_notice() {
+        let s = prompt_context_snippet(true, None, &[]).unwrap();
+        assert!(s.contains("restricted capability set"));
+        // Should be brief — no file list noise.
+        assert!(!s.contains("mounted"));
+    }
+
+    #[test]
+    fn prompt_context_snippet_scratchpad_contains_restricted_notice() {
+        let s = prompt_context_snippet(false, Some("my-pad"), &[]).unwrap();
+        assert!(s.contains("restricted capability set"));
+        assert!(!s.contains("mounted"));
+    }
+
+    #[test]
+    fn prompt_context_snippet_file_lists_paths_and_warns_persistence() {
+        let files = vec![
+            "/home/user/foo.rs".to_string(),
+            "/home/user/bar.rs".to_string(),
+        ];
+        let s = prompt_context_snippet(false, None, &files).unwrap();
+        assert!(s.contains("restricted capability set"));
+        assert!(s.contains("/home/user/foo.rs"));
+        assert!(s.contains("/home/user/bar.rs"));
+        assert!(s.contains("not be persisted"));
     }
 
     #[test]
