@@ -29,7 +29,7 @@ pub struct RunConfig {
     pub runtime: Runtime,
     pub no_cache: bool,
     pub dry_run: bool,
-    pub quiet: bool,
+    pub verbose: bool,
     pub debug: bool,
     pub preserve_container: bool,
     pub harness_version: Option<String>,
@@ -191,7 +191,7 @@ fn build_base_command(base_ref: &str, ctx_path: &str, cfg: &RunConfig) -> Vec<St
     if cfg.debug {
         cmd.push(s("--debug"));
     }
-    if cfg.quiet {
+    if !cfg.verbose {
         cmd.push(s("--quiet"));
     }
     cmd.push(s(ctx_path));
@@ -224,7 +224,7 @@ fn build_browser_base_command(
     if cfg.debug {
         cmd.push(s("--debug"));
     }
-    if cfg.quiet {
+    if !cfg.verbose {
         cmd.push(s("--quiet"));
     }
     cmd.push(s(ctx_path));
@@ -268,7 +268,7 @@ fn build_pi_main_command(
     if cfg.debug {
         cmd.push(s("--debug"));
     }
-    if cfg.quiet {
+    if !cfg.verbose {
         cmd.push(s("--quiet"));
     }
     cmd.push(s(ctx_path));
@@ -376,7 +376,7 @@ fn build_claude_main_command(
     if cfg.debug {
         cmd.push(s("--debug"));
     }
-    if cfg.quiet {
+    if !cfg.verbose {
         cmd.push(s("--quiet"));
     }
     cmd.push(s(ctx_path));
@@ -485,7 +485,7 @@ fn build_codex_main_command(
     if cfg.debug {
         cmd.push(s("--debug"));
     }
-    if cfg.quiet {
+    if !cfg.verbose {
         cmd.push(s("--quiet"));
     }
     cmd.push(s(ctx_path));
@@ -673,7 +673,7 @@ mod tests {
             runtime,
             no_cache: false,
             dry_run: false,
-            quiet: false,
+            verbose: false,
             debug: false,
             preserve_container: false,
             harness_version: None,

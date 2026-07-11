@@ -37,9 +37,9 @@ pub struct Cli {
     #[arg(long)]
     pub dry_run: bool,
 
-    /// Run Docker build with minimal output.
-    #[arg(long, short = 'q')]
-    pub quiet: bool,
+    /// Show Docker build output instead of suppressing it.
+    #[arg(long)]
+    pub verbose: bool,
 
     /// Set the LLM agent version to install (default: latest).
     /// Applies to --runtime pi only.

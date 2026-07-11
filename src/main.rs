@@ -143,7 +143,7 @@ fn run() -> Result<(), String> {
         runtime: cli.runtime,
         no_cache: cli.no_cache,
         dry_run: cli.dry_run,
-        quiet: cli.quiet,
+        verbose: cli.verbose,
         debug: cli.debug,
         preserve_container: cli.preserve_container,
         harness_version: cli.harness_version,
