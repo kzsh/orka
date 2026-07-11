@@ -76,6 +76,10 @@ pub struct Cli {
     #[arg(long, short = 'f', value_name = "FILE", conflicts_with_all = ["tmp", "scratchpad"])]
     pub file: Vec<std::path::PathBuf>,
 
+    /// Print the license text and exit.
+    #[arg(long)]
+    pub print_license: bool,
+
     /// Arguments forwarded verbatim to the container (passed to the agent).
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     pub container_args: Vec<String>,

@@ -12,6 +12,8 @@ mod expand;
 use cli::Cli;
 use docker::RunConfig;
 
+const LICENSE: &str = include_str!("../PUBLIC-LICENSE");
+
 fn main() {
     if let Err(e) = run() {
         eprintln!("orka: {e}");
@@ -21,6 +23,11 @@ fn main() {
 
 fn run() -> Result<(), String> {
     let cli = Cli::parse();
+
+    if cli.print_license {
+        print!("{LICENSE}");
+        return Ok(());
+    }
 
     let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
     let cwd = std::env::current_dir()
