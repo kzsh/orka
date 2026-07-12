@@ -4,6 +4,38 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+use crate::cli::{ContainerEngine, Runtime};
+
+/// User defaults from `config.yaml`.  Every field is optional; absent fields
+/// leave the corresponding CLI default in place.
+#[derive(Debug, Deserialize, Default)]
+pub struct Defaults {
+    /// Default container engine (`docker`, `podman`, `nerdctl`).
+    pub engine: Option<ContainerEngine>,
+    /// Default agent runtime (`pi`, `claude`, `codex`).
+    pub runtime: Option<Runtime>,
+    /// Default harness version string passed to `--harness-version`.
+    pub harness: Option<String>,
+    /// When `true`, skips installing the agent-browser extension by default.
+    pub no_browser: Option<bool>,
+}
+
+/// Returns the canonical path to `config.yaml`, honouring `$XDG_CONFIG_HOME`.
+pub fn defaults_path() -> PathBuf {
+    orka_config_dir().join("config.yaml")
+}
+
+/// Load `config.yaml`.  Returns `Ok(Defaults::default())` when the file does
+/// not exist so callers do not need to special-case a missing file.
+pub fn load_defaults(path: &Path) -> Result<Defaults, String> {
+    if !path.exists() {
+        return Ok(Defaults::default());
+    }
+    let content =
+        fs::read_to_string(path).map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+    serde_yml::from_str(&content).map_err(|e| format!("failed to parse {}: {e}", path.display()))
+}
+
 /// Top-level structure of `environments.yaml`.
 #[derive(Debug, Deserialize, Default)]
 pub struct Config {
@@ -26,6 +58,11 @@ pub struct Environment {
 /// Returns the canonical path to the environments config file,
 /// honouring `$XDG_CONFIG_HOME` when set.
 pub fn config_path() -> PathBuf {
+    orka_config_dir().join("environments.yaml")
+}
+
+/// Returns `$XDG_CONFIG_HOME/orka` (or `~/.config/orka` as the fallback).
+fn orka_config_dir() -> PathBuf {
     let config_home = std::env::var("XDG_CONFIG_HOME")
         .ok()
         .filter(|s| !s.is_empty())
@@ -34,7 +71,7 @@ pub fn config_path() -> PathBuf {
             let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
             PathBuf::from(home).join(".config")
         });
-    config_home.join("orka").join("environments.yaml")
+    config_home.join("orka")
 }
 
 /// Load and parse the environments config file.
@@ -92,5 +129,51 @@ environments:
     fn parse_empty_document() {
         let cfg: Config = serde_yml::from_str("").unwrap();
         assert!(cfg.environments.is_empty());
+    }
+
+    #[test]
+    fn parse_defaults_full() {
+        let yaml = "engine: podman\nruntime: claude\nharness: 1.2.3\nno_browser: true\n";
+        let d: Defaults = serde_yml::from_str(yaml).unwrap();
+        assert_eq!(d.engine, Some(ContainerEngine::Podman));
+        assert_eq!(d.runtime, Some(Runtime::Claude));
+        assert_eq!(d.harness.as_deref(), Some("1.2.3"));
+        assert_eq!(d.no_browser, Some(true));
+    }
+
+    #[test]
+    fn parse_defaults_partial() {
+        let yaml = "engine: nerdctl\n";
+        let d: Defaults = serde_yml::from_str(yaml).unwrap();
+        assert_eq!(d.engine, Some(ContainerEngine::Nerdctl));
+        assert!(d.runtime.is_none());
+        assert!(d.harness.is_none());
+        assert!(d.no_browser.is_none());
+    }
+
+    #[test]
+    fn parse_defaults_empty_document() {
+        let d: Defaults = serde_yml::from_str("").unwrap();
+        assert!(d.engine.is_none());
+        assert!(d.runtime.is_none());
+        assert!(d.harness.is_none());
+        assert!(d.no_browser.is_none());
+    }
+
+    #[test]
+    fn load_defaults_returns_empty_when_file_missing() {
+        let path = std::path::Path::new("/tmp/orka-nonexistent-config-xyz.yaml");
+        let d = load_defaults(path).unwrap();
+        assert!(d.engine.is_none());
+    }
+
+    #[test]
+    fn load_defaults_reads_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.yaml");
+        std::fs::write(&path, "engine: podman\nruntime: codex\n").unwrap();
+        let d = load_defaults(&path).unwrap();
+        assert_eq!(d.engine, Some(ContainerEngine::Podman));
+        assert_eq!(d.runtime, Some(Runtime::Codex));
     }
 }

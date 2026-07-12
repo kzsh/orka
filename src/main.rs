@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 use std::process;
 
-use clap::Parser;
+use clap::{CommandFactory, FromArgMatches, Parser};
 
 mod cli;
 mod config;
@@ -22,7 +22,11 @@ fn main() {
 }
 
 fn run() -> Result<(), String> {
-    let cli = Cli::parse();
+    let matches = Cli::command().get_matches();
+    let mut cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
+
+    // Apply config.yaml defaults for any value the user did not explicitly set.
+    apply_config_defaults(&mut cli, &matches)?;
 
     if cli.print_license {
         print!("{LICENSE}");
@@ -275,6 +279,53 @@ fn split_once_eq(s: &str) -> (&str, &str) {
         Some(pos) => (&s[..pos], &s[pos + 1..]),
         None => (s, ""),
     }
+}
+
+/// Fill in `cli` fields that the user did not explicitly set on the command
+/// line, using values from `~/.config/orka/config.yaml`.
+///
+/// Detection relies on `ArgMatches::value_source`: a field whose source is
+/// `ValueSource::DefaultValue` was not supplied by the user, so the config
+/// value wins.  Fields supplied on the command line or via environment
+/// variables are left untouched.
+fn apply_config_defaults(
+    cli: &mut Cli,
+    matches: &clap::ArgMatches,
+) -> Result<(), String> {
+    use clap::parser::ValueSource;
+
+    let path = config::defaults_path();
+    let defaults = config::load_defaults(&path)?;
+
+    let src = |id: &str| matches.value_source(id);
+    let is_default = |id: &str| src(id) == Some(ValueSource::DefaultValue);
+
+    if is_default("engine") {
+        if let Some(v) = defaults.engine {
+            cli.engine = v;
+        }
+    }
+
+    if is_default("runtime") {
+        if let Some(v) = defaults.runtime {
+            cli.runtime = v;
+        }
+    }
+
+    // harness-version is Option<String>: None means the user never set it.
+    if cli.harness_version.is_none() {
+        if let Some(v) = defaults.harness {
+            cli.harness_version = Some(v);
+        }
+    }
+
+    if is_default("no-browser") {
+        if let Some(v) = defaults.no_browser {
+            cli.no_browser = v;
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

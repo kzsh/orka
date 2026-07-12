@@ -1,7 +1,9 @@
 use clap::{Parser, ValueEnum};
+use serde::Deserialize;
 
 /// Which container engine to use for build and run.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, ValueEnum, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum ContainerEngine {
     #[default]
     Docker,
@@ -21,7 +23,8 @@ impl ContainerEngine {
 }
 
 /// Which agent runtime to launch inside the container.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, ValueEnum, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum Runtime {
     /// pi coding agent (default)
     #[default]
