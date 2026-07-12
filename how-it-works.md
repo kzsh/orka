@@ -21,7 +21,7 @@ excluding the surrounding directory from the mount.
 Both files use `.gitignore` syntax. Global patterns apply to every mount;
 per-repo patterns apply only to the directory they accompany. Per-repo
 patterns are evaluated after global ones and can negate global matches with
-`!`.
+`!`. See [shadow files](shadow-files.md) for syntax reference and setup.
 
 ## Container engine
 

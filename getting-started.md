@@ -102,4 +102,4 @@ curl -Lo ~/.config/orka/orkashadow \
   https://raw.githubusercontent.com/kzsh/orka/main/config/orkashadow
 ```
 
-Uncomment the patterns that apply to your setup. Files matched by these patterns are replaced with empty read-only stubs inside the container. See [how it works](how-it-works.md) for detail on how shadow mounts operate.
+Uncomment the patterns that apply to your setup. Files matched by these patterns are replaced with empty read-only stubs inside the container. See [shadow files](shadow-files.md) for a full guide, or [how it works](how-it-works.md) for the mechanism.

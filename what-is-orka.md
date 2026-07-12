@@ -90,7 +90,7 @@ secrets/
 
 Files matched by an `orkashadow` file are replaced with empty read-only stubs inside the container. The agent can see that the file exists but cannot read or write its content. This lets you mount an entire repository while keeping credentials, proprietary logic, or licensed code invisible to the agent.
 
-Global patterns in `~/.config/orka/orkashadow` apply to every mount. Per-repo patterns go in a `.orkashadow` file at the root of any directory you mount.
+Global patterns in `~/.config/orka/orkashadow` apply to every mount. Per-repo patterns go in a `.orkashadow` file at the root of any directory you mount. See [shadow files](shadow-files.md) for a full guide.
 
 ---
 
