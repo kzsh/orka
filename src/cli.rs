@@ -1,5 +1,25 @@
 use clap::{Parser, ValueEnum};
 
+/// Which container engine to use for build and run.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ContainerEngine {
+    #[default]
+    Docker,
+    Podman,
+    Nerdctl,
+}
+
+impl ContainerEngine {
+    /// Returns the binary name for this engine.
+    pub fn binary(self) -> &'static str {
+        match self {
+            ContainerEngine::Docker => "docker",
+            ContainerEngine::Podman => "podman",
+            ContainerEngine::Nerdctl => "nerdctl",
+        }
+    }
+}
+
 /// Which agent runtime to launch inside the container.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum Runtime {
@@ -15,6 +35,10 @@ pub enum Runtime {
 #[derive(Parser, Debug)]
 #[command(name = "orka", about = "Agent runtime container wrapper", version)]
 pub struct Cli {
+    /// Container engine to use for build and run.
+    #[arg(long, value_enum, default_value = "docker")]
+    pub engine: ContainerEngine,
+
     /// Agent runtime to use inside the container.
     #[arg(long, value_enum, default_value = "pi")]
     pub runtime: Runtime,
@@ -28,16 +52,16 @@ pub struct Cli {
     #[arg(long, value_name = "KEY=VALUE")]
     pub env: Vec<String>,
 
-    /// Force a rebuild of the agent image, ignoring Docker's layer cache.
+    /// Force a rebuild of the agent image, ignoring the layer cache.
     /// The base image (apt deps) is always built with cache to keep rebuilds fast.
     #[arg(long)]
     pub no_cache: bool,
 
-    /// Print the Docker commands to be run instead of executing them.
+    /// Print the commands to be run instead of executing them.
     #[arg(long)]
     pub dry_run: bool,
 
-    /// Show Docker build output instead of suppressing it.
+    /// Show build output instead of suppressing it.
     #[arg(long)]
     pub verbose: bool,
 

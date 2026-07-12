@@ -69,7 +69,7 @@ fn run() -> Result<(), String> {
             mounted_files.push(host_path);
         }
         // Multiple files may span different directories; use CWD as a stable
-        // anchor. Docker creates the workdir in the container if it doesn't
+        // anchor. The engine creates the workdir in the container if it doesn't
         // exist as a mount, which is fine — the agent references files by their
         // absolute paths.
         cwd.clone()
@@ -140,6 +140,7 @@ fn run() -> Result<(), String> {
     // no_browser is passed through; tmp/scratchpad are already resolved into
     // volumes and workdir above.
     let run_cfg = RunConfig {
+        engine_binary: cli.engine.binary().to_string(),
         runtime: cli.runtime,
         no_cache: cli.no_cache,
         dry_run: cli.dry_run,
@@ -166,7 +167,7 @@ fn prompt_context_snippet(
     mounted_files: &[String],
 ) -> Option<String> {
     const RESTRICTED: &str =
-        "You are running inside a Docker container with a restricted capability set \
+        "You are running inside a container with a restricted capability set \
          (all Linux capabilities dropped, no new privileges).";
 
     if is_tmp || scratchpad.is_some() {
@@ -226,7 +227,7 @@ fn scratchpad_dir(name: &str, home: &str) -> Result<String, String> {
     Ok(path)
 }
 
-/// Resolve a `--file` argument to an absolute path string ready to pass to Docker.
+/// Resolve a `--file` argument to an absolute path string ready to pass to the container engine.
 ///
 /// `cwd` is used as the base for relative paths.
 fn resolve_file_path(file_path: &Path, cwd: &str) -> Result<String, String> {

@@ -24,8 +24,10 @@ const PI_CONTAINER_NAME: &str = "orka";
 const CLAUDE_CONTAINER_NAME: &str = "orka-claude";
 const CODEX_CONTAINER_NAME: &str = "orka-codex";
 
-/// Everything the caller needs to communicate to the docker build+run sequence.
+/// Everything the caller needs to communicate to the build+run sequence.
 pub struct RunConfig {
+    /// Binary name of the container engine (e.g. "docker", "podman", "nerdctl").
+    pub engine_binary: String,
     pub runtime: Runtime,
     pub no_cache: bool,
     pub dry_run: bool,
@@ -191,7 +193,7 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
 
 fn build_base_command(base_ref: &str, ctx_path: &str, cfg: &RunConfig) -> Vec<String> {
     let mut cmd = vec![
-        s("docker"),
+        cfg.engine_binary.clone(),
         s("build"),
         s("--tag"),
         s(base_ref),
@@ -219,7 +221,7 @@ fn build_browser_base_command(
     cfg: &RunConfig,
 ) -> Vec<String> {
     let mut cmd = vec![
-        s("docker"),
+        cfg.engine_binary.clone(),
         s("build"),
         s("--tag"),
         s(browser_base_ref),
@@ -249,7 +251,7 @@ fn build_pi_main_command(
     cfg: &RunConfig,
 ) -> Vec<String> {
     let mut cmd = vec![
-        s("docker"),
+        cfg.engine_binary.clone(),
         s("build"),
         s("--tag"),
         s(main_ref),
@@ -293,7 +295,7 @@ fn run_pi_command_args(
     }
 
     let mut cmd = vec![
-        s("docker"),
+        cfg.engine_binary.clone(),
         s("run"),
         s("--user"),
         format!("{uid}:{gid}"),
@@ -353,7 +355,7 @@ fn build_claude_main_command(
     cfg: &RunConfig,
 ) -> Vec<String> {
     let mut cmd = vec![
-        s("docker"),
+        cfg.engine_binary.clone(),
         s("build"),
         s("--tag"),
         s(main_ref),
@@ -398,7 +400,7 @@ fn run_claude_command_args(
     }
 
     let mut cmd = vec![
-        s("docker"),
+        cfg.engine_binary.clone(),
         s("run"),
         s("--user"),
         format!("{uid}:{gid}"),
@@ -456,7 +458,7 @@ fn build_codex_main_command(
     cfg: &RunConfig,
 ) -> Vec<String> {
     let mut cmd = vec![
-        s("docker"),
+        cfg.engine_binary.clone(),
         s("build"),
         s("--tag"),
         s(main_ref),
@@ -492,7 +494,7 @@ fn run_codex_command_args(
     fs::create_dir_all(&codex_dir).map_err(|e| format!("failed to create {codex_dir}: {e}"))?;
 
     let mut cmd = vec![
-        s("docker"),
+        cfg.engine_binary.clone(),
         s("run"),
         s("--user"),
         format!("{uid}:{gid}"),
@@ -656,6 +658,7 @@ mod tests {
 
     fn make_cfg(runtime: Runtime) -> RunConfig {
         RunConfig {
+            engine_binary: "docker".to_string(),
             runtime,
             no_cache: false,
             dry_run: false,
@@ -685,8 +688,23 @@ mod tests {
         assert_eq!(cmd[0], "docker");
         assert_eq!(cmd[1], "build");
         assert!(cmd.contains(&"orka:latest".to_string()));
-        // No --file means it uses the context default (Dockerfile)
         assert!(!cmd.contains(&"--file".to_string()));
+    }
+
+    #[test]
+    fn engine_binary_is_used_as_first_token() {
+        let mut cfg = make_cfg(Runtime::Pi);
+        cfg.engine_binary = "podman".to_string();
+        let cmd = build_pi_main_command(
+            "orka:latest",
+            "orka-base:latest",
+            "user",
+            1000,
+            1000,
+            "/ctx",
+            &cfg,
+        );
+        assert_eq!(cmd[0], "podman");
     }
 
     #[test]
