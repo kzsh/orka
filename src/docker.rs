@@ -30,7 +30,6 @@ pub struct RunConfig {
     pub no_cache: bool,
     pub dry_run: bool,
     pub verbose: bool,
-    pub debug: bool,
     pub preserve_container: bool,
     pub harness_version: Option<String>,
     /// When true, skips passing `INSTALL_AGENT_BROWSER=true` to the pi image build.
@@ -165,6 +164,17 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
         return Ok(());
     }
 
+    if !cfg.verbose {
+        let runtime_label = match cfg.runtime {
+            Runtime::Pi => "pi",
+            Runtime::Claude => "claude",
+            Runtime::Codex => "codex",
+        };
+        println!("=====================");
+        println!("Orka: {runtime_label}");
+        println!("=====================");
+    }
+
     exec(&base_build)?;
     if let Some(ref bbb) = browser_base_build {
         exec(bbb)?;
@@ -188,9 +198,6 @@ fn build_base_command(base_ref: &str, ctx_path: &str, cfg: &RunConfig) -> Vec<St
         s("--file"),
         format!("{ctx_path}/Dockerfile.base"),
     ];
-    if cfg.debug {
-        cmd.push(s("--debug"));
-    }
     if !cfg.verbose {
         cmd.push(s("--quiet"));
     }
@@ -221,9 +228,6 @@ fn build_browser_base_command(
         s("--build-arg"),
         format!("BASE_IMAGE={base_ref}"),
     ];
-    if cfg.debug {
-        cmd.push(s("--debug"));
-    }
     if !cfg.verbose {
         cmd.push(s("--quiet"));
     }
@@ -265,9 +269,6 @@ fn build_pi_main_command(
     if cfg.no_cache {
         cmd.push(s("--no-cache"));
     }
-    if cfg.debug {
-        cmd.push(s("--debug"));
-    }
     if !cfg.verbose {
         cmd.push(s("--quiet"));
     }
@@ -304,9 +305,6 @@ fn run_pi_command_args(
     }
     cmd.push(s("--cap-drop=ALL"));
     cmd.push(s("--security-opt=no-new-privileges"));
-    if cfg.debug {
-        cmd.push(s("--debug"));
-    }
 
     // Pi config/data dir is always mounted so settings persist across runs.
     cmd.push(s("--volume"));
@@ -373,9 +371,6 @@ fn build_claude_main_command(
     if cfg.no_cache {
         cmd.push(s("--no-cache"));
     }
-    if cfg.debug {
-        cmd.push(s("--debug"));
-    }
     if !cfg.verbose {
         cmd.push(s("--quiet"));
     }
@@ -415,9 +410,6 @@ fn run_claude_command_args(
     }
     cmd.push(s("--cap-drop=ALL"));
     cmd.push(s("--security-opt=no-new-privileges"));
-    if cfg.debug {
-        cmd.push(s("--debug"));
-    }
 
     // Claude config/data dir is always mounted so conversation history persists.
     cmd.push(s("--volume"));
@@ -482,9 +474,6 @@ fn build_codex_main_command(
     if cfg.no_cache {
         cmd.push(s("--no-cache"));
     }
-    if cfg.debug {
-        cmd.push(s("--debug"));
-    }
     if !cfg.verbose {
         cmd.push(s("--quiet"));
     }
@@ -515,9 +504,6 @@ fn run_codex_command_args(
     }
     cmd.push(s("--cap-drop=ALL"));
     cmd.push(s("--security-opt=no-new-privileges"));
-    if cfg.debug {
-        cmd.push(s("--debug"));
-    }
 
     // Codex config/data dir is always mounted so settings and history persist.
     cmd.push(s("--volume"));
@@ -674,7 +660,6 @@ mod tests {
             no_cache: false,
             dry_run: false,
             verbose: false,
-            debug: false,
             preserve_container: false,
             harness_version: None,
             no_browser: false,

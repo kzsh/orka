@@ -20,7 +20,7 @@ pub struct Cli {
     pub runtime: Runtime,
 
     /// Select a named preset from environments.yaml. Repeatable.
-    /// Use --preset list to print available preset names.
+    /// Use `--preset list` to print available preset names.
     #[arg(long, value_name = "NAME")]
     pub preset: Vec<String>,
 
@@ -45,10 +45,6 @@ pub struct Cli {
     /// Applies to --runtime pi only.
     #[arg(long, short = 'v', value_name = "VERSION")]
     pub harness_version: Option<String>,
-
-    /// Enable Docker debug mode on build and run.
-    #[arg(long)]
-    pub debug: bool,
 
     /// Keep the container after it exits instead of removing it automatically.
     #[arg(long)]

@@ -144,7 +144,6 @@ fn run() -> Result<(), String> {
         no_cache: cli.no_cache,
         dry_run: cli.dry_run,
         verbose: cli.verbose,
-        debug: cli.debug,
         preserve_container: cli.preserve_container,
         harness_version: cli.harness_version,
         no_browser: cli.no_browser,
