@@ -33,6 +33,17 @@ export OPEN_ROUTER_KEY=sk-or-...
 
 orka reads these from your environment at runtime — you do not need to write them into any config file.
 
+For any other credentials a model or provider requires, export them in your shell profile and pass them through with `--env`:
+
+```sh
+# in ~/.bashrc or ~/.zshrc
+export MY_PROVIDER_KEY=sk-...
+```
+
+```sh
+orka --env MY_PROVIDER_KEY=$MY_PROVIDER_KEY
+```
+
 ## First run
 
 From a project directory:
@@ -49,6 +60,8 @@ To use a different runtime:
 orka --runtime claude
 orka --runtime codex
 ```
+
+Set `runtime` in `~/.config/orka/config.yaml` to make a runtime the default for every session.
 
 ## Preset configuration
 
