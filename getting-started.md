@@ -52,7 +52,7 @@ orka --runtime codex
 
 ## Preset configuration
 
-Presets let you inject volumes and environment variables without repeating flags on every invocation. Copy the bundled template from the repository:
+Presets let you inject volumes and environment variables without repeating flags on every invocation. Copy the [environments.yaml](https://raw.githubusercontent.com/kzsh/orka/main/config/environments.yaml) template from the repository:
 
 ```sh
 mkdir -p ~/.config/orka
@@ -83,7 +83,7 @@ For a step-by-step guide to writing your own preset, see [writing a preset](writ
 
 ## User defaults
 
-Flags you use on every run can be set permanently in `~/.config/orka/config.yaml`. Copy the bundled template:
+This step is optional. If you always want to use the same engine or runtime without typing the flag every time, create `~/.config/orka/config.yaml` from the [config.yaml](https://raw.githubusercontent.com/kzsh/orka/main/config/config.yaml) template:
 
 ```sh
 mkdir -p ~/.config/orka

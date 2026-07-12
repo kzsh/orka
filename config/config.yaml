@@ -1,0 +1,18 @@
+# orka user defaults
+#
+# Copy this file to ${XDG_CONFIG_HOME:-~/.config}/orka/config.yaml
+#
+# Values here act as defaults: any flag supplied on the command line or via
+# environment variable takes precedence over what is set here.
+#
+# Supported keys:
+#
+#   engine     - container engine binary to use (docker | podman | nerdctl)
+#   runtime    - agent runtime to launch          (pi | claude | codex)
+#   harness    - harness version to install        (e.g. 1.2.3; pi runtime only)
+#   no_browser - omit the agent-browser extension  (true | false; pi runtime only)
+
+# engine: podman
+# runtime: pi
+# harness: latest
+# no_browser: false
