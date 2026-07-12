@@ -6,7 +6,7 @@ orka runs the agent inside a container. The agent process has no access to the
 host filesystem beyond what you explicitly mount in. API keys and other
 environment variables are passed in selectively rather than inherited from the
 host shell environment wholesale. All Linux capabilities are dropped at
-container start; the agent cannot acquire elevated privileges.
+container start (`--cap-drop=ALL`); the agent cannot acquire elevated privileges.
 
 ## Shadow mounts
 

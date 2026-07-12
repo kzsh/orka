@@ -10,7 +10,7 @@ There are two kinds of shadow file:
 - **Global** (`~/.config/orka/orkashadow`): applies to every directory mounted in any orka session on this machine.
 - **Per-repo** (`.orkashadow` at the root of a mounted directory): applies only to that directory.
 
-Both use `.gitignore` syntax. Per-repo patterns are evaluated after global ones and can negate a global match with `!`.
+Both use `.gitignore` syntax (thanks [BurntSushi](https://github.com/BurntSushi/ripgrep/tree/master/crates/ignore)). Per-repo patterns are evaluated after global ones and can negate a global match with `!`.
 
 ## Syntax
 
