@@ -2,12 +2,13 @@ use std::fs;
 use std::path::Path;
 use std::process;
 
-use clap::{CommandFactory, FromArgMatches, Parser};
+use clap::{CommandFactory, FromArgMatches};
 
 mod cli;
 mod config;
 mod docker;
 mod expand;
+mod shadow;
 
 use cli::Cli;
 use docker::RunConfig;
@@ -89,7 +90,9 @@ fn run() -> Result<(), String> {
     // interactive sessions (no container_args) don't need it.
     let mut container_args = cli.container_args;
     if !container_args.is_empty() {
-        if let Some(snippet) = prompt_context_snippet(cli.tmp, cli.scratchpad.as_deref(), &mounted_files) {
+        if let Some(snippet) =
+            prompt_context_snippet(cli.tmp, cli.scratchpad.as_deref(), &mounted_files)
+        {
             container_args[0] = format!("{snippet}\n\n{}", container_args[0]);
         }
     }
@@ -141,6 +144,13 @@ fn run() -> Result<(), String> {
         env_vars.push((key.to_string(), expand::expand_value(val_raw)));
     }
 
+    // Compute shadow mounts from any .orkashadow files found in mounted
+    // directories.  _shadow_tmp holds the temp dir containing the empty shadow
+    // source file and must stay alive until the container exits.  None means
+    // no shadow files were found and no temp dir was created.
+    let global_shadow = config::global_shadow_path();
+    let (shadow_volumes, _shadow_tmp) = shadow::collect_shadow_volumes(&volumes, &global_shadow)?;
+
     // no_browser is passed through; tmp/scratchpad are already resolved into
     // volumes and workdir above.
     let run_cfg = RunConfig {
@@ -153,6 +163,7 @@ fn run() -> Result<(), String> {
         harness_version: cli.harness_version,
         no_browser: cli.no_browser,
         volumes,
+        shadow_volumes,
         env_vars,
         workdir,
         container_args,
@@ -170,8 +181,7 @@ fn prompt_context_snippet(
     scratchpad: Option<&str>,
     mounted_files: &[String],
 ) -> Option<String> {
-    const RESTRICTED: &str =
-        "You are running inside a container with a restricted capability set \
+    const RESTRICTED: &str = "You are running inside a container with a restricted capability set \
          (all Linux capabilities dropped, no new privileges).";
 
     if is_tmp || scratchpad.is_some() {
@@ -210,8 +220,8 @@ fn make_temp_workdir() -> Result<String, String> {
             out.status.code().unwrap_or(-1)
         ));
     }
-    let path = String::from_utf8(out.stdout)
-        .map_err(|e| format!("mktemp -d output is not UTF-8: {e}"))?;
+    let path =
+        String::from_utf8(out.stdout).map_err(|e| format!("mktemp -d output is not UTF-8: {e}"))?;
     Ok(path.trim().to_string())
 }
 
@@ -288,10 +298,7 @@ fn split_once_eq(s: &str) -> (&str, &str) {
 /// `ValueSource::DefaultValue` was not supplied by the user, so the config
 /// value wins.  Fields supplied on the command line or via environment
 /// variables are left untouched.
-fn apply_config_defaults(
-    cli: &mut Cli,
-    matches: &clap::ArgMatches,
-) -> Result<(), String> {
+fn apply_config_defaults(cli: &mut Cli, matches: &clap::ArgMatches) -> Result<(), String> {
     use clap::parser::ValueSource;
 
     let path = config::defaults_path();

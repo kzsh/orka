@@ -1,0 +1,52 @@
+# orka global shadow patterns
+#
+# Copy this file to ${XDG_CONFIG_HOME:-~/.config}/orka/orkashadow
+#
+# Patterns here are applied to every directory mounted into an orka container,
+# regardless of which repository you are working in.  Use this for files that
+# are sensitive on any project.
+#
+# Syntax is identical to .gitignore:
+#   *.key          - any file ending in .key
+#   .env           - a file named exactly .env
+#   secrets/       - everything inside a directory named secrets
+#   **/.env        - .env files at any depth
+#   !important.key - un-shadow a file matched by an earlier pattern
+#
+# Per-repo .orkashadow files are applied after this file, so they take
+# precedence and can negate global patterns with !.
+
+# ---------------------------------------------------------------------------
+# Credentials and secrets
+# ---------------------------------------------------------------------------
+
+# .env
+# **/.env
+# *.pem
+# *.key
+# *.p12
+# *.pfx
+# secrets/
+# .secrets/
+
+# ---------------------------------------------------------------------------
+# Sensitive code
+#
+# Use this to keep proprietary algorithms, licensed third-party source, or
+# internal business logic out of the agent's context.  The agent will see the
+# rest of the codebase and can work around the shadowed files, but cannot read
+# or modify their contents.
+# ---------------------------------------------------------------------------
+
+# Proprietary core logic isolated into its own package or directory:
+# src/pricing/
+# src/ranking/
+# internal/
+
+# Individual files containing licensed or regulated implementations:
+# src/crypto/patented_cipher.rs
+# lib/ml/proprietary_model.py
+
+# Generated files that embed licensed data (e.g. trained weights, lookup tables):
+# **/*.bin
+# assets/models/

@@ -25,6 +25,12 @@ pub fn defaults_path() -> PathBuf {
     orka_config_dir().join("config.yaml")
 }
 
+/// Returns the canonical path to the global `orkashadow` file,
+/// honouring `$XDG_CONFIG_HOME`.
+pub fn global_shadow_path() -> PathBuf {
+    orka_config_dir().join("orkashadow")
+}
+
 /// Load `config.yaml`.  Returns `Ok(Defaults::default())` when the file does
 /// not exist so callers do not need to special-case a missing file.
 pub fn load_defaults(path: &Path) -> Result<Defaults, String> {

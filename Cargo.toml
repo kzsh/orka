@@ -15,7 +15,9 @@ opt-level = "z"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
+ignore = "0.4"
 libc = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_yml = "0.0"
 tempfile = "3"
+walkdir = "2"

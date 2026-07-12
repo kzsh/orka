@@ -39,6 +39,9 @@ pub struct RunConfig {
     pub no_browser: bool,
     /// Resolved `(host_path, container_path)` volume pairs.
     pub volumes: Vec<(String, String)>,
+    /// Read-only shadow volumes: each is mounted `:ro` over a sensitive path
+    /// inside the container so the original file is hidden and writes are refused.
+    pub shadow_volumes: Vec<(String, String)>,
     /// Resolved `(key, value)` environment variable pairs.
     pub env_vars: Vec<(String, String)>,
     pub workdir: String,
@@ -135,8 +138,7 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
         Runtime::Pi => {
             let tag = cfg.harness_version.as_deref().unwrap_or("latest");
             let main_ref = format!("{PI_CONTAINER_NAME}:{tag}");
-            let b =
-                build_pi_main_command(&main_ref, &pi_base_ref, &uname, uid, gid, ctx_path, cfg);
+            let b = build_pi_main_command(&main_ref, &pi_base_ref, &uname, uid, gid, ctx_path, cfg);
             let r = run_pi_command_args(&main_ref, uid, gid, cfg)?;
             (b, r)
         }
@@ -149,8 +151,7 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
         }
         Runtime::Codex => {
             let main_ref = format!("{CODEX_CONTAINER_NAME}:latest");
-            let b =
-                build_codex_main_command(&main_ref, &base_ref, &uname, uid, gid, ctx_path, cfg);
+            let b = build_codex_main_command(&main_ref, &base_ref, &uname, uid, gid, ctx_path, cfg);
             let r = run_codex_command_args(&main_ref, uid, gid, cfg)?;
             (b, r)
         }
@@ -323,6 +324,10 @@ fn run_pi_command_args(
         cmd.push(s("--volume"));
         cmd.push(format!("{host}:{container}"));
     }
+    for (source, container) in &cfg.shadow_volumes {
+        cmd.push(s("--volume"));
+        cmd.push(format!("{source}:{container}:ro"));
+    }
     for (key, val) in &cfg.env_vars {
         cmd.push(s("--env"));
         cmd.push(format!("{key}={val}"));
@@ -426,6 +431,10 @@ fn run_claude_command_args(
         cmd.push(s("--volume"));
         cmd.push(format!("{host}:{container}"));
     }
+    for (source, container) in &cfg.shadow_volumes {
+        cmd.push(s("--volume"));
+        cmd.push(format!("{source}:{container}:ro"));
+    }
     for (key, val) in &cfg.env_vars {
         cmd.push(s("--env"));
         cmd.push(format!("{key}={val}"));
@@ -514,6 +523,10 @@ fn run_codex_command_args(
     for (host, container) in &cfg.volumes {
         cmd.push(s("--volume"));
         cmd.push(format!("{host}:{container}"));
+    }
+    for (source, container) in &cfg.shadow_volumes {
+        cmd.push(s("--volume"));
+        cmd.push(format!("{source}:{container}:ro"));
     }
     for (key, val) in &cfg.env_vars {
         cmd.push(s("--env"));
@@ -667,6 +680,7 @@ mod tests {
             harness_version: None,
             no_browser: false,
             volumes: vec![],
+            shadow_volumes: vec![],
             env_vars: vec![],
             workdir: "/work".to_string(),
             container_args: vec![],
@@ -800,6 +814,23 @@ mod tests {
         let joined = cmd.join(" ");
         assert!(!joined.contains("INSTALL_AGENT_BROWSER"));
         assert!(!joined.contains("browser-base"));
+    }
+
+    #[test]
+    fn shadow_volumes_rendered_with_ro() {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+        let pi_dir = format!("{home}/.pi");
+        // Ensure ~/.pi exists so run_pi_command_args doesn't fail.
+        std::fs::create_dir_all(&pi_dir).unwrap();
+
+        let mut cfg = make_cfg(Runtime::Pi);
+        cfg.no_browser = true;
+        cfg.shadow_volumes = vec![("/tmp/empty".to_string(), "/project/.env".to_string())];
+        let cmd = run_pi_command_args("orka:latest", 1000, 1000, &cfg).unwrap();
+        let joined = cmd.join(" ");
+        assert!(joined.contains("/tmp/empty:/project/.env:ro"));
+        // Regular volumes must not get :ro.
+        assert!(!joined.contains(&format!("{pi_dir}:{pi_dir}:ro")));
     }
 
     #[test]
