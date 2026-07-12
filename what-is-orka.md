@@ -94,6 +94,36 @@ Global patterns in `~/.config/orka/orkashadow` apply to every mount. Per-repo pa
 
 ---
 
+### Inject a one-off environment variable
+
+```sh
+orka --env FEATURE_FLAG=1
+```
+
+Injects an environment variable into the container for a single run without adding it to a preset. For variables you supply on every run, add them to a preset instead.
+
+---
+
+### Pin the agent version
+
+```sh
+orka --harness-version 1.2.3
+```
+
+By default orka installs the latest agent harness. Pin a specific version to keep the environment consistent across machines or to hold at a known-good release after an update. Applies to the `pi` runtime only. Set `harness` in `~/.config/orka/config.yaml` to make the pin permanent.
+
+---
+
+### Inspect the container after it exits
+
+```sh
+orka --preserve-container
+```
+
+By default the container is removed when the agent exits. `--preserve-container` keeps it so you can inspect its filesystem, check logs, or retrieve output that was not in a mounted directory.
+
+---
+
 ### Use a different container engine
 
 ```sh

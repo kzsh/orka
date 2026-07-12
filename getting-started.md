@@ -2,11 +2,14 @@
 
 ## Prerequisites
 
-Docker must be installed and the daemon must be running. Verify with:
+A container engine must be installed and running. orka supports Docker (default), Podman, and nerdctl. Verify your engine is available:
 
 ```sh
 docker info
+# or: podman info / nerdctl info
 ```
+
+To use Podman or nerdctl, pass `--engine podman` or `--engine nerdctl` on each invocation, or set `engine` in `~/.config/orka/config.yaml` (see [User defaults](#user-defaults) below).
 
 orka builds and caches a container image on first run. Subsequent runs reuse the cached image, so the initial build is slower than later ones.
 
@@ -77,3 +80,26 @@ orka --preset rust --preset uv
 See [`config/environments.yaml`](config/environments.yaml) for the full set of bundled presets and a description of the format.
 
 For a step-by-step guide to writing your own preset, see [writing a preset](writing-a-preset.md). For an explanation of how orka builds and runs containers, see [how it works](how-it-works.md).
+
+## User defaults
+
+Flags you use on every run can be set permanently in `~/.config/orka/config.yaml`. Copy the bundled template:
+
+```sh
+mkdir -p ~/.config/orka
+curl -Lo ~/.config/orka/config.yaml \
+  https://raw.githubusercontent.com/kzsh/orka/main/config/config.yaml
+```
+
+Uncomment and set any of the supported keys: `engine`, `runtime`, `harness`, `no_browser`. The `harness` key pins the agent version installed in the image — useful when you want the environment to stay consistent across machines or after an update. Any flag supplied on the command line takes precedence over the config file.
+
+## Shadow configuration
+
+To keep credentials or sensitive files out of the agent's context on every project, copy the global shadow template:
+
+```sh
+curl -Lo ~/.config/orka/orkashadow \
+  https://raw.githubusercontent.com/kzsh/orka/main/config/orkashadow
+```
+
+Uncomment the patterns that apply to your setup. Files matched by these patterns are replaced with empty read-only stubs inside the container. See [how it works](how-it-works.md) for detail on how shadow mounts operate.
