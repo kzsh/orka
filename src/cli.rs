@@ -1,31 +1,44 @@
 use clap::{Parser, ValueEnum};
 use serde::Deserialize;
 
-/// Which container engine to use for build and run.
+/// Isolation backend to use for sandboxing the agent.
+///
+/// Container engines (docker, podman, nerdctl) build an OCI image and run it.
+/// Bubblewrap skips the image entirely and directly namespaces the host
+/// filesystem — lighter weight but Linux-only.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, ValueEnum, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum ContainerEngine {
+pub enum Backend {
     #[default]
     Docker,
     Podman,
     Nerdctl,
+    /// Lightweight Linux-only sandbox; no image build step required.
+    Bubblewrap,
 }
 
-impl ContainerEngine {
-    /// Returns the binary name for this engine.
+impl Backend {
+    /// Returns the binary name for container-engine backends.
+    /// Not meaningful for [`Backend::Bubblewrap`].
     pub fn binary(self) -> &'static str {
         match self {
-            ContainerEngine::Docker => "docker",
-            ContainerEngine::Podman => "podman",
-            ContainerEngine::Nerdctl => "nerdctl",
+            Backend::Docker => "docker",
+            Backend::Podman => "podman",
+            Backend::Nerdctl => "nerdctl",
+            Backend::Bubblewrap => "bwrap",
         }
+    }
+
+    /// Returns true when the backend is bubblewrap (no container image needed).
+    pub fn is_bwrap(self) -> bool {
+        self == Backend::Bubblewrap
     }
 }
 
-/// Which agent runtime to launch inside the container.
+/// Which agent harness to launch inside the container.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, ValueEnum, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum Runtime {
+pub enum Harness {
     /// pi coding agent (default)
     #[default]
     Pi,
@@ -36,15 +49,17 @@ pub enum Runtime {
 }
 
 #[derive(Parser, Debug)]
-#[command(name = "orka", about = "Agent runtime container wrapper", version)]
+#[command(name = "orka", about = "Agent harness container wrapper", version)]
 pub struct Cli {
-    /// Container engine to use for build and run.
+    /// Isolation backend.  Container engines (docker/podman/nerdctl) build an
+    /// OCI image; bubblewrap sandboxes the host filesystem directly (Linux only,
+    /// no image build required).
     #[arg(long, value_enum, default_value = "docker")]
-    pub engine: ContainerEngine,
+    pub engine: Backend,
 
-    /// Agent runtime to use inside the container.
+    /// Agent harness to use inside the container.
     #[arg(long, value_enum, default_value = "pi")]
-    pub runtime: Runtime,
+    pub harness: Harness,
 
     /// Select a named preset from environments.yaml. Repeatable.
     /// Use `--preset list` to print available preset names.
@@ -69,7 +84,7 @@ pub struct Cli {
     pub verbose: bool,
 
     /// Set the LLM agent version to install (default: latest).
-    /// Applies to --runtime pi only.
+    /// Applies to --harness pi only.
     #[arg(long, short = 'v', value_name = "VERSION")]
     pub harness_version: Option<String>,
 
@@ -78,7 +93,7 @@ pub struct Cli {
     pub preserve_container: bool,
 
     /// Skip installing the agent-browser extension and Chromium (browser support is on by default).
-    /// Applies to --runtime pi only.
+    /// Applies to --harness pi only.
     #[arg(long)]
     pub no_browser: bool,
 

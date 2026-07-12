@@ -4,7 +4,7 @@ use std::process::{Command, ExitStatus};
 
 use tempfile::TempDir;
 
-use crate::cli::Runtime;
+use crate::cli::Harness;
 
 // Embed the Docker build context files so the binary is self-contained.
 // These paths are relative to the workspace root (i.e. the directory that
@@ -28,14 +28,14 @@ const CODEX_CONTAINER_NAME: &str = "orka-codex";
 pub struct RunConfig {
     /// Binary name of the container engine (e.g. "docker", "podman", "nerdctl").
     pub engine_binary: String,
-    pub runtime: Runtime,
+    pub harness: Harness,
     pub no_cache: bool,
     pub dry_run: bool,
     pub verbose: bool,
     pub preserve_container: bool,
     pub harness_version: Option<String>,
     /// When true, skips passing `INSTALL_AGENT_BROWSER=true` to the pi image build.
-    /// Ignored for the claude runtime.
+    /// Ignored for the claude harness.
     pub no_browser: bool,
     /// Resolved `(host_path, container_path)` volume pairs.
     pub volumes: Vec<(String, String)>,
@@ -115,7 +115,7 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
     // before the main image.  This layer installs agent-browser and downloads
     // Chromium; it is not rebuilt with --no-cache so it stays cached across
     // pi version upgrades.
-    let browser_base_build = if matches!(cfg.runtime, Runtime::Pi) && !cfg.no_browser {
+    let browser_base_build = if matches!(cfg.harness, Harness::Pi) && !cfg.no_browser {
         Some(build_browser_base_command(
             &browser_base_ref,
             &base_ref,
@@ -134,22 +134,22 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
         browser_base_ref.clone()
     };
 
-    let (main_build, run_cmd) = match cfg.runtime {
-        Runtime::Pi => {
+    let (main_build, run_cmd) = match cfg.harness {
+        Harness::Pi => {
             let tag = cfg.harness_version.as_deref().unwrap_or("latest");
             let main_ref = format!("{PI_CONTAINER_NAME}:{tag}");
             let b = build_pi_main_command(&main_ref, &pi_base_ref, &uname, uid, gid, ctx_path, cfg);
             let r = run_pi_command_args(&main_ref, uid, gid, cfg)?;
             (b, r)
         }
-        Runtime::Claude => {
+        Harness::Claude => {
             let main_ref = format!("{CLAUDE_CONTAINER_NAME}:latest");
             let b =
                 build_claude_main_command(&main_ref, &base_ref, &uname, uid, gid, ctx_path, cfg);
             let r = run_claude_command_args(&main_ref, uid, gid, cfg)?;
             (b, r)
         }
-        Runtime::Codex => {
+        Harness::Codex => {
             let main_ref = format!("{CODEX_CONTAINER_NAME}:latest");
             let b = build_codex_main_command(&main_ref, &base_ref, &uname, uid, gid, ctx_path, cfg);
             let r = run_codex_command_args(&main_ref, uid, gid, cfg)?;
@@ -168,13 +168,13 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
     }
 
     if !cfg.verbose {
-        let runtime_label = match cfg.runtime {
-            Runtime::Pi => "pi",
-            Runtime::Claude => "claude",
-            Runtime::Codex => "codex",
+        let harness_label = match cfg.harness {
+            Harness::Pi => "pi",
+            Harness::Claude => "claude",
+            Harness::Codex => "codex",
         };
         println!("=====================");
-        println!("Orka: {runtime_label}");
+        println!("Orka: {harness_label}");
         println!("=====================");
     }
 
@@ -239,7 +239,7 @@ fn build_browser_base_command(
 }
 
 // ---------------------------------------------------------------------------
-// Command builders — pi runtime
+// Command builders — pi harness
 // ---------------------------------------------------------------------------
 
 fn build_pi_main_command(
@@ -347,7 +347,7 @@ fn run_pi_command_args(
 }
 
 // ---------------------------------------------------------------------------
-// Command builders — claude runtime
+// Command builders — claude harness
 // ---------------------------------------------------------------------------
 
 fn build_claude_main_command(
@@ -454,7 +454,7 @@ fn run_claude_command_args(
 }
 
 // ---------------------------------------------------------------------------
-// Command builders — codex runtime
+// Command builders — codex harness
 // ---------------------------------------------------------------------------
 
 fn build_codex_main_command(
@@ -669,10 +669,10 @@ mod tests {
         assert!(gid < u32::MAX);
     }
 
-    fn make_cfg(runtime: Runtime) -> RunConfig {
+    fn make_cfg(harness: Harness) -> RunConfig {
         RunConfig {
             engine_binary: "docker".to_string(),
-            runtime,
+            harness,
             no_cache: false,
             dry_run: false,
             verbose: false,
@@ -689,7 +689,7 @@ mod tests {
 
     #[test]
     fn pi_build_command_uses_pi_image_name() {
-        let cfg = make_cfg(Runtime::Pi);
+        let cfg = make_cfg(Harness::Pi);
         let cmd = build_pi_main_command(
             "orka:latest",
             "orka-base:latest",
@@ -707,7 +707,7 @@ mod tests {
 
     #[test]
     fn engine_binary_is_used_as_first_token() {
-        let mut cfg = make_cfg(Runtime::Pi);
+        let mut cfg = make_cfg(Harness::Pi);
         cfg.engine_binary = "podman".to_string();
         let cmd = build_pi_main_command(
             "orka:latest",
@@ -723,7 +723,7 @@ mod tests {
 
     #[test]
     fn claude_build_command_uses_claude_dockerfile() {
-        let cfg = make_cfg(Runtime::Claude);
+        let cfg = make_cfg(Harness::Claude);
         let cmd = build_claude_main_command(
             "orka-claude:latest",
             "orka-base:latest",
@@ -745,7 +745,7 @@ mod tests {
     fn pi_build_uses_browser_base_by_default() {
         // When browser support is enabled (the default), the main pi image
         // should build FROM orka-browser-base, not orka-base.
-        let cfg = make_cfg(Runtime::Pi);
+        let cfg = make_cfg(Harness::Pi);
         let cmd = build_pi_main_command(
             "orka:latest",
             "orka-browser-base:latest",
@@ -762,7 +762,7 @@ mod tests {
 
     #[test]
     fn pi_build_uses_plain_base_when_no_browser() {
-        let mut cfg = make_cfg(Runtime::Pi);
+        let mut cfg = make_cfg(Harness::Pi);
         cfg.no_browser = true;
         let cmd = build_pi_main_command(
             "orka:latest",
@@ -781,7 +781,7 @@ mod tests {
 
     #[test]
     fn browser_base_build_command_is_correct() {
-        let cfg = make_cfg(Runtime::Pi);
+        let cfg = make_cfg(Harness::Pi);
         let cmd = build_browser_base_command(
             "orka-browser-base:latest",
             "orka-base:latest",
@@ -801,7 +801,7 @@ mod tests {
 
     #[test]
     fn claude_build_never_passes_browser_arg() {
-        let cfg = make_cfg(Runtime::Claude);
+        let cfg = make_cfg(Harness::Claude);
         let cmd = build_claude_main_command(
             "orka-claude:latest",
             "orka-base:latest",
@@ -823,7 +823,7 @@ mod tests {
         // Ensure ~/.pi exists so run_pi_command_args doesn't fail.
         std::fs::create_dir_all(&pi_dir).unwrap();
 
-        let mut cfg = make_cfg(Runtime::Pi);
+        let mut cfg = make_cfg(Harness::Pi);
         cfg.no_browser = true;
         cfg.shadow_volumes = vec![("/tmp/empty".to_string(), "/project/.env".to_string())];
         let cmd = run_pi_command_args("orka:latest", 1000, 1000, &cfg).unwrap();
@@ -835,7 +835,7 @@ mod tests {
 
     #[test]
     fn pi_build_passes_version_when_set() {
-        let mut cfg = make_cfg(Runtime::Pi);
+        let mut cfg = make_cfg(Harness::Pi);
         cfg.harness_version = Some("1.2.3".to_string());
         let cmd = build_pi_main_command(
             "orka:1.2.3",

@@ -4,18 +4,18 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use crate::cli::{ContainerEngine, Runtime};
+use crate::cli::{Backend, Harness};
 
 /// User defaults from `config.yaml`.  Every field is optional; absent fields
 /// leave the corresponding CLI default in place.
 #[derive(Debug, Deserialize, Default)]
 pub struct Defaults {
-    /// Default container engine (`docker`, `podman`, `nerdctl`).
-    pub engine: Option<ContainerEngine>,
-    /// Default agent runtime (`pi`, `claude`, `codex`).
-    pub runtime: Option<Runtime>,
+    /// Default isolation backend (`docker`, `podman`, `nerdctl`, `bubblewrap`).
+    pub engine: Option<Backend>,
+    /// Default agent harness (`pi`, `claude`, `codex`).
+    pub harness: Option<Harness>,
     /// Default harness version string passed to `--harness-version`.
-    pub harness: Option<String>,
+    pub harness_version: Option<String>,
     /// When `true`, skips installing the agent-browser extension by default.
     pub no_browser: Option<bool>,
 }
@@ -139,11 +139,11 @@ environments:
 
     #[test]
     fn parse_defaults_full() {
-        let yaml = "engine: podman\nruntime: claude\nharness: 1.2.3\nno_browser: true\n";
+        let yaml = "engine: podman\nharness: claude\nharness-version: 1.2.3\nno_browser: true\n";
         let d: Defaults = serde_yml::from_str(yaml).unwrap();
-        assert_eq!(d.engine, Some(ContainerEngine::Podman));
-        assert_eq!(d.runtime, Some(Runtime::Claude));
-        assert_eq!(d.harness.as_deref(), Some("1.2.3"));
+        assert_eq!(d.engine, Some(Backend::Podman));
+        assert_eq!(d.harness, Some(Harness::Claude));
+        assert_eq!(d.harness_version.as_deref(), Some("1.2.3"));
         assert_eq!(d.no_browser, Some(true));
     }
 
@@ -151,18 +151,25 @@ environments:
     fn parse_defaults_partial() {
         let yaml = "engine: nerdctl\n";
         let d: Defaults = serde_yml::from_str(yaml).unwrap();
-        assert_eq!(d.engine, Some(ContainerEngine::Nerdctl));
-        assert!(d.runtime.is_none());
+        assert_eq!(d.engine, Some(Backend::Nerdctl));
         assert!(d.harness.is_none());
+        assert!(d.harness_version.is_none());
         assert!(d.no_browser.is_none());
+    }
+
+    #[test]
+    fn parse_defaults_bubblewrap() {
+        let yaml = "engine: bubblewrap\n";
+        let d: Defaults = serde_yml::from_str(yaml).unwrap();
+        assert_eq!(d.engine, Some(Backend::Bubblewrap));
     }
 
     #[test]
     fn parse_defaults_empty_document() {
         let d: Defaults = serde_yml::from_str("").unwrap();
         assert!(d.engine.is_none());
-        assert!(d.runtime.is_none());
         assert!(d.harness.is_none());
+        assert!(d.harness_version.is_none());
         assert!(d.no_browser.is_none());
     }
 
@@ -177,9 +184,9 @@ environments:
     fn load_defaults_reads_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.yaml");
-        std::fs::write(&path, "engine: podman\nruntime: codex\n").unwrap();
+        std::fs::write(&path, "engine: podman\nharness: codex\n").unwrap();
         let d = load_defaults(&path).unwrap();
-        assert_eq!(d.engine, Some(ContainerEngine::Podman));
-        assert_eq!(d.runtime, Some(Runtime::Codex));
+        assert_eq!(d.engine, Some(Backend::Podman));
+        assert_eq!(d.harness, Some(Harness::Codex));
     }
 }

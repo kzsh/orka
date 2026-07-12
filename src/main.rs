@@ -4,6 +4,7 @@ use std::process;
 
 use clap::{CommandFactory, FromArgMatches};
 
+mod bwrap;
 mod cli;
 mod config;
 mod docker;
@@ -155,7 +156,7 @@ fn run() -> Result<(), String> {
     // volumes and workdir above.
     let run_cfg = RunConfig {
         engine_binary: cli.engine.binary().to_string(),
-        runtime: cli.runtime,
+        harness: cli.harness,
         no_cache: cli.no_cache,
         dry_run: cli.dry_run,
         verbose: cli.verbose,
@@ -169,7 +170,11 @@ fn run() -> Result<(), String> {
         container_args,
     };
 
-    docker::build_and_run(&run_cfg)
+    if cli.engine.is_bwrap() {
+        bwrap::run(&run_cfg)
+    } else {
+        docker::build_and_run(&run_cfg)
+    }
 }
 
 /// Build a context snippet that is prepended to the agent's task prompt
@@ -313,15 +318,15 @@ fn apply_config_defaults(cli: &mut Cli, matches: &clap::ArgMatches) -> Result<()
         }
     }
 
-    if is_default("runtime") {
-        if let Some(v) = defaults.runtime {
-            cli.runtime = v;
+    if is_default("harness") {
+        if let Some(v) = defaults.harness {
+            cli.harness = v;
         }
     }
 
     // harness-version is Option<String>: None means the user never set it.
     if cli.harness_version.is_none() {
-        if let Some(v) = defaults.harness {
+        if let Some(v) = defaults.harness_version {
             cli.harness_version = Some(v);
         }
     }
