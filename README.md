@@ -1,8 +1,8 @@
 # orka
 
-Agent runtime container wrapper. A single Rust binary that builds Docker images
-containing your choice of agent runtime (pi, claude-code, or codex) and drops
-you into one, with your current directory mounted as a volume.
+Agent runtime container wrapper. A single Rust binary that builds container
+images containing your choice of agent runtime (pi, claude-code, or codex) and
+drops you into one, with your current directory mounted as a volume.
 
 ## Usage
 
@@ -16,17 +16,32 @@ orka [OPTIONS] [CONTAINER_ARGS]...
 
 | Flag | Description |
 |---|---|
+| `--engine <ENGINE>` | Container engine to use: `docker` (default), `podman`, or `nerdctl`. |
 | `--runtime <RUNTIME>` | Agent runtime to use: `pi` (default), `claude`, or `codex`. |
 | `--preset <NAME>` | Load volumes and env vars from a named preset in `~/.config/orka/environments.yaml`. Use `--preset list` to print available presets. |
 | `--env KEY=VALUE` | Inject an env var into the container. Repeatable. |
-| `--no-cache` | Rebuild the agent image ignoring Docker's layer cache. The base image (apt deps) is always cached. |
-| `--harness-version <VER>` | Install a specific agent harness version instead of `latest`. Applies to `--runtime pi` only. |
-| `--ephemeral` | Remove the container on exit (`docker run --rm`). |
+| `--file` / `-f <FILE>` | Mount a specific file instead of the CWD. Repeatable. |
+| `--tmp` | Use a temporary directory as the container workdir. |
+| `--scratchpad <NAME>` | Use a named persistent scratch directory as the workdir. |
+| `--harness-version` / `-v <VER>` | Install a specific agent harness version instead of `latest`. Applies to `--runtime pi` only. |
 | `--no-browser` | Skip installing agent-browser and Chromium. Applies to `--runtime pi` only. |
-| `--no-extensions` / `-N` | Hide all auto-discovered pi extensions for this run. Applies to `--runtime pi` only. |
-| `--quiet` / `-q` | Suppress Docker build output. |
-| `--debug` | Pass `--debug` to Docker build and run. |
-| `--dry-run` | Print the Docker commands without executing them. |
+| `--preserve-container` | Keep the container after it exits instead of removing it automatically. |
+| `--no-cache` | Rebuild the agent image ignoring the layer cache. The base image (apt deps) is always cached. |
+| `--dry-run` | Print the commands to be run instead of executing them. |
+| `--verbose` | Show build output instead of suppressing it. |
+| `--print-license` | Print the license text and exit. |
+
+### Configuration file
+
+Copy the bundled template to set persistent defaults:
+
+```sh
+mkdir -p ~/.config/orka
+cp config/config.yaml ~/.config/orka/config.yaml
+```
+
+`config.yaml` supports: `engine`, `runtime`, `harness`, `no_browser`. Any flag
+supplied on the command line takes precedence over the config file value.
 
 ### Presets
 
@@ -55,6 +70,23 @@ environments:
 
 Leading `~` and `$VAR` / `${VAR}` references in env values are expanded from
 the host environment at runtime.
+
+### Shadowing sensitive files
+
+Files matching patterns in an `orkashadow` file are replaced with empty
+read-only stubs inside the container. The agent can see the filename but
+cannot read or write the content.
+
+**Global patterns** apply to every mount:
+
+```sh
+cp config/orkashadow ~/.config/orka/orkashadow
+```
+
+**Per-repo patterns** apply only to the directory they live in. Place a
+`.orkashadow` file at the root of any directory you mount. The syntax is
+identical to `.gitignore`: glob patterns, `!` negations, `**` depth
+wildcards.
 
 ## Building
 
