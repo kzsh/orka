@@ -76,3 +76,29 @@ orka --scratchpad research
 ```
 
 Creates (or reuses) `~/.local/share/orka/scratch/research` and mounts it as the workdir. Useful for ongoing tasks that are not tied to a source repository. The name is arbitrary; run the same name again to resume where you left off.
+
+---
+
+### Keep sensitive files out of the agent's context
+
+```sh
+# ~/.config/orka/orkashadow
+.env
+**/.env
+secrets/
+```
+
+Files matched by an `orkashadow` file are replaced with empty read-only stubs inside the container. The agent can see that the file exists but cannot read or write its content. This lets you mount an entire repository while keeping credentials, proprietary logic, or licensed code invisible to the agent.
+
+Global patterns in `~/.config/orka/orkashadow` apply to every mount. Per-repo patterns go in a `.orkashadow` file at the root of any directory you mount.
+
+---
+
+### Use a different container engine
+
+```sh
+orka --engine podman
+orka --engine nerdctl
+```
+
+Orka delegates to whichever container engine binary you specify. The default is `docker`. Set a persistent default in `~/.config/orka/config.yaml` to avoid repeating the flag.

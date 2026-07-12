@@ -75,3 +75,5 @@ orka --preset rust --preset uv
 ```
 
 See [`config/environments.yaml`](config/environments.yaml) for the full set of bundled presets and a description of the format.
+
+For a step-by-step guide to writing your own preset, see [writing a preset](writing-a-preset.md). For an explanation of how orka builds and runs containers, see [how it works](how-it-works.md).

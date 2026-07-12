@@ -1,21 +1,55 @@
 # How it works
 
-## Container isolation
+## Isolation model
 
-orka runs the agent inside a Docker container. The agent process has no access to the host filesystem beyond what you explicitly mount in. API keys and other environment variables are passed in selectively rather than inherited from the host shell environment wholesale.
+orka runs the agent inside a container. The agent process has no access to the
+host filesystem beyond what you explicitly mount in. API keys and other
+environment variables are passed in selectively rather than inherited from the
+host shell environment wholesale. All Linux capabilities are dropped at
+container start; the agent cannot acquire elevated privileges.
+
+## Shadow mounts
+
+When a mounted directory contains a `.orkashadow` file, or when a global
+`~/.config/orka/orkashadow` file exists, orka identifies every file matched
+by those patterns and mounts a zero-byte read-only file over each one inside
+the container. The matched path is still visible to the agent but its content
+is inaccessible and writes are refused. This keeps credentials, proprietary
+logic, or other sensitive material out of the agent's context without
+excluding the surrounding directory from the mount.
+
+Both files use `.gitignore` syntax. Global patterns apply to every mount;
+per-repo patterns apply only to the directory they accompany. Per-repo
+patterns are evaluated after global ones and can negate global matches with
+`!`.
+
+## Container engine
+
+orka delegates all build and run operations to a container engine binary.
+Docker is the default; `--engine podman` or `--engine nerdctl` selects an
+alternative. The engine binary is invoked directly, so behaviour matches
+whatever version is installed on the host.
+
+## Agent runtimes
+
+Three agent runtimes are supported: pi, claude-code, and codex. Each runtime
+has its own Dockerfile and produces a separate image. Images are tagged and
+cached independently, so switching runtimes does not invalidate the cache for
+others. The runtime is selected per invocation with `--runtime`.
 
 ## Image building
 
-orka builds the agent image every time it runs. In practice this is fast because Docker's layer cache means only changed layers are rebuilt. The base layer — which installs system packages — is kept separate and rarely changes. The agent layer on top of it, which installs the agent runtime itself, is what gets rebuilt when you update orka or pin a new agent version with `--harness-version`.
-
-A full rebuild from scratch (bypassing the cache) can be forced with `--no-cache`.
+orka builds the agent image on every invocation. The base layer — which
+installs system packages and (for pi) Chromium — changes rarely and is kept
+as a separate cached image. The agent layer on top, which installs the agent
+runtime itself, is what gets rebuilt when orka is updated or a new harness
+version is pinned with `--harness-version`. A full cache bypass is available
+with `--no-cache`.
 
 ## User and permission mirroring
 
-orka reads your user ID, group ID, and username from the host at runtime and passes them as build arguments to the image. The container creates a user with the same UID, GID, and name before starting the agent.
-
-This means:
-
-- Files written inside the container are owned by your host user, not root. No ownership mismatch on mounted directories.
-- Paths that include your home directory (e.g. from presets) resolve correctly inside the container because the username matches.
-- The agent sees a familiar environment rather than a generic root shell.
+orka reads the invoking user's UID, GID, and username from the host and
+passes them as build arguments. The container image creates a matching user
+before starting the agent. Files written inside the container are therefore
+owned by the host user, not root, and paths that include the home directory
+resolve correctly because the username matches.

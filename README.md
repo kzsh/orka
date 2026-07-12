@@ -8,7 +8,7 @@ Three runtimes are supported: [pi](https://pi.earendil.works), [claude-code](htt
 
 The container image is built on each run first run and cached for subsequent runs. 
 
-See [getting started](getting-started.md), [what is orka](what-is-orka.md), or [how it works](how-it-works.md) for more details.
+See [getting started](getting-started.md), [what is orka](what-is-orka.md), [how it works](how-it-works.md), or [writing a preset](writing-a-preset.md) for more details.
 
 ## Install
 
@@ -58,6 +58,7 @@ orka --scratchpad my-task
 
 | Flag | Description |
 |---|---|
+| `--engine` | Container engine: `docker` (default), `podman`, `nerdctl` |
 | `--runtime` | Agent runtime: `pi` (default), `claude`, `codex` |
 | `--preset <NAME>` | Apply a named preset from `environments.yaml`. Repeatable. |
 | `--env <KEY=VALUE>` | Inject an env var into the container. Repeatable. |
@@ -68,7 +69,7 @@ orka --scratchpad my-task
 | `--no-browser` | Skip installing agent-browser and Chromium (pi only). |
 | `--preserve-container` | Keep the container after it exits instead of removing it automatically. |
 | `--no-cache` | Rebuild the agent image without Docker layer cache. |
-| `--dry-run` | Print Docker commands without running them. |
+| `--dry-run` | Print commands without running them. |
 | `--verbose` | Show Docker build output (suppressed by default). |
 | `--print-license` | Print the license text and exit. |
 
@@ -77,3 +78,31 @@ orka --scratchpad my-task
 Presets are named configurations defined in `~/.config/orka/environments.yaml`. Each preset can specify volumes to mount and environment variables to inject. Presets can be stacked with multiple `--preset` flags.
 
 See [`config/environments.yaml`](config/environments.yaml) for the format.
+
+## User defaults
+
+Persistent defaults for `engine`, `runtime`, `harness`, and `no_browser` can be set in `~/.config/orka/config.yaml`. Copy the bundled template to get started:
+
+```sh
+mkdir -p ~/.config/orka
+curl -Lo ~/.config/orka/config.yaml \
+  https://raw.githubusercontent.com/kzsh/orka/main/config/config.yaml
+```
+
+Any flag supplied on the command line takes precedence over the config file value.
+
+## Shadowing sensitive files
+
+Files matching patterns in an `orkashadow` file are replaced with empty read-only stubs inside the container. The agent can see the filename but cannot read or write the content.
+
+**Global patterns** (`~/.config/orka/orkashadow`) apply to every mount. Copy the bundled template:
+
+```sh
+mkdir -p ~/.config/orka
+curl -Lo ~/.config/orka/orkashadow \
+  https://raw.githubusercontent.com/kzsh/orka/main/config/orkashadow
+```
+
+**Per-repo patterns** live in a `.orkashadow` file at the root of any directory you mount and apply only to that directory.
+
+Both files use `.gitignore` syntax: glob patterns, `!` negations, `**` depth wildcards.
