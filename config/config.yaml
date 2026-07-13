@@ -7,18 +7,12 @@
 #
 # Supported keys:
 #
-#   engine          - backend to use              (docker | podman | nerdctl | bubblewrap)
-#   harness         - agent harness to launch      (pi | claude | codex)
-#   harness-version - harness version to install   (e.g. 1.2.3; pi harness only)
-#   no_browser      - omit agent-browser extension (true | false; pi harness only)
-#   pi-path         - absolute path to pi binary   (bubblewrap backend only)
-#   claude-path     - absolute path to claude      (bubblewrap backend only)
-#   codex-path      - absolute path to codex       (bubblewrap backend only)
+#   engine          - container engine binary to use (docker | podman | nerdctl | bubblewrap)
+#   harness         - agent harness to launch          (pi | claude | codex)
+#   harness-version - harness version to install        (e.g. 1.2.3; pi harness only)
+#   no_browser      - omit the agent-browser extension  (true | false; pi harness only)
 
 # engine: podman
 # harness: pi
 # harness-version: latest
 # no_browser: false
-# pi-path: ~/.bun/bin/pi
-# claude-path: /usr/local/bin/claude
-# codex-path: /usr/local/bin/codex

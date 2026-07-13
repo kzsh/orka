@@ -73,7 +73,13 @@ Set `harness` in `~/.config/orka/config.yaml` to make a harness the default for 
 
 ## Preset configuration
 
-Presets let you inject volumes and environment variables without repeating flags on every invocation. Copy the [environments.yaml](https://raw.githubusercontent.com/kzsh/orka/main/config/environments.yaml) template from the repository:
+Presets let you inject volumes and environment variables without repeating flags on every invocation. Run `orka --init` to write the bundled template files to `~/.config/orka/`, then edit `environments.yaml` to match the paths on your system:
+
+```sh
+orka --init
+```
+
+Alternatively, download only the environments template:
 
 ```sh
 mkdir -p ~/.config/orka
@@ -104,8 +110,7 @@ For a step-by-step guide to writing your own preset, see [writing a preset](writ
 
 ## User defaults
 
-This step is optional. If you always want to use the same engine or harness without typing the flag every time, create `~/.config/orka/config.yaml` from the [config.yaml](https://raw.githubusercontent.com/kzsh/orka/main/config/config.yaml) template:
-
+This step is optional. If you always want to use the same engine or harness without typing the flag every time, run `orka --init` (it writes all config templates at once and skips any that already exist) or download only `config.yaml`:
 
 ```sh
 mkdir -p ~/.config/orka
@@ -129,9 +134,10 @@ Any flag supplied on the command line takes precedence over the config file.
 
 ## Shadow configuration
 
-To keep credentials or sensitive files out of the agent's context on every project, copy the global shadow template:
+To keep credentials or sensitive files out of the agent's context on every project, run `orka --init` to write the bundled template, or download just the shadow template:
 
 ```sh
+mkdir -p ~/.config/orka
 curl -Lo ~/.config/orka/orkashadow \
   https://raw.githubusercontent.com/kzsh/orka/main/config/orkashadow
 ```

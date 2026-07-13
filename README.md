@@ -70,8 +70,10 @@ orka --scratchpad my-task
 | `--preserve-container` | Keep the container after it exits instead of removing it automatically. |
 | `--no-cache` | Rebuild the agent image without Docker layer cache. |
 | `--no-custom-dockerfile` | Ignore `~/.config/orka/Dockerfile.base` and use the embedded one. |
+| `--quiet` | Suppress image build output. |
 | `--dry-run` | Print commands without running them. |
 | `--verbose` | Pass `VERBOSE=1` into the container environment. |
+| `--init` | Write default config files to `~/.config/orka/` and exit. Skips any file that already exists. |
 | `--print-license` | Print the license text and exit. |
 
 ## Presets

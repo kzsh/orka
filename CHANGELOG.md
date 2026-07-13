@@ -2,6 +2,11 @@
 
 ## latest
 
+- `--init` to write the bundled config templates (`config.yaml`, `environments.yaml`, `orkashadow`) to `~/.config/orka/`. Files that already exist are skipped.
+- `--quiet` to suppress image build output (build output is now shown by default; use `--quiet` to hide it).
+- `--verbose` now passes `VERBOSE=1` into the container environment instead of controlling build output visibility.
+- `--no-custom-dockerfile` to ignore a user-supplied `~/.config/orka/Dockerfile.base` and use the embedded default.
+- Podman backend: `--userns=keep-id` is now passed automatically so container file ownership matches the host user.
 - `--engine bubblewrap` to run the agent in a bubblewrap user-namespace sandbox instead of a container. No image is built; the agent binary must already be installed on the host. Bind-mounts system paths, agent config directories, and user-specified volumes into the namespace. Linux only.
 - `pi-path`, `claude-path`, `codex-path` in `~/.config/orka/config.yaml` to set explicit paths to agent binaries when they are not in a standard location. Used only by the bubblewrap backend.
 - `--engine` to select the container engine: `docker` (default), `podman`, or `nerdctl`. The engine binary is used for all build and run commands.
@@ -17,5 +22,4 @@
 - `--no-browser` to skip installing agent-browser and Chromium (browser support on by default)
 - `--harness-version` to pin the agent version installed in the image
 - `--preserve-container` to keep the container after it exits (containers are removed on exit by default)
-- `--verbose` to show build output (suppressed by default)
 - `--dry-run` to print commands without executing them

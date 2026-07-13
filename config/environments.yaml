@@ -22,7 +22,7 @@ environments:
   bun:
     volumes:
       - ~/.bun/:~/.bun/
-      - ~/.local/bin/:~/.local/bin/
+      - ~/.local/bin/:~/.local/bin/:ro
 
   # go paths are read from `go env` at install time; adjust if your
   # GOROOT, GOPATH, or GOCACHE live somewhere non-standard.
@@ -51,7 +51,7 @@ environments:
 
   uv:
     volumes:
-      - ~/.local/bin/uv:~/.local/bin/uv
+      - ~/.local/bin/uv:~/.local/bin/uv:ro
       - ~/.local/share/uv:~/.local/share/uv
       - ~/.cache/uv:~/.cache/uv
     env:

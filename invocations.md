@@ -13,3 +13,4 @@
 | `orka --harness claude` | `harness: claude` |
 | `orka --harness-version 1.2.3` | `harness-version: "1.2.3"` |
 | `orka --no-browser` | `no_browser: true` |
+| `orka --init` | |
