@@ -333,8 +333,8 @@ fn apply_config_defaults(cli: &mut Cli, matches: &clap::ArgMatches) -> Result<co
 
     // harness-version is Option<String>: None means the user never set it.
     if cli.harness_version.is_none() {
-        if let Some(v) = defaults.harness_version {
-            cli.harness_version = Some(v);
+        if let Some(ref v) = defaults.harness_version {
+            cli.harness_version = Some(v.clone());
         }
     }
 
