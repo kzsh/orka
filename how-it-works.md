@@ -71,3 +71,7 @@ include the home directory resolve correctly because the username matches.
 
 For the bubblewrap backend, no user mapping is needed. The agent process runs
 as the invoking user directly.
+
+## Inspecting a run
+
+If you want to get a sense of how `orka` is building and running containers, try passing `--dry-run` to print the exact build and run commands that would be issued without executing them.
