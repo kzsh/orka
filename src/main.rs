@@ -338,7 +338,7 @@ fn apply_config_defaults(cli: &mut Cli, matches: &clap::ArgMatches) -> Result<co
         }
     }
 
-    if is_default("no-browser") {
+    if is_default("no_browser") {
         if let Some(v) = defaults.no_browser {
             cli.no_browser = v;
         }
