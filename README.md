@@ -88,6 +88,22 @@ cp config/orkashadow ~/.config/orka/orkashadow
 identical to `.gitignore`: glob patterns, `!` negations, `**` depth
 wildcards.
 
+## How it works
+
+When you run `orka`, it builds two Docker images in sequence: a base image
+containing slow-changing apt dependencies, then the agent image on top. The
+agent image embeds the chosen runtime (pi, claude-code, or codex). Your working
+directory (or the path specified via `--file`, `--tmp`, or `--scratchpad`) is
+mounted into the container, and `orka` drops you into an interactive session.
+
+Both the Dockerfiles and the entrypoint script are embedded in the binary at
+compile time, so no external files are needed at runtime.
+
+To see the exact `docker build` and `docker run` commands that would be issued
+without running them, pass `--dry-run`. This is useful for understanding the
+full set of volume mounts, environment variables, and flags in effect for a
+given invocation.
+
 ## Building
 
 Rust stable required.
