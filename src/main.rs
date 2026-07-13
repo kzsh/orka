@@ -16,6 +16,10 @@ use docker::RunConfig;
 
 const LICENSE: &str = include_str!("../PUBLIC-LICENSE");
 
+const TEMPLATE_CONFIG: &str = include_str!("../config/config.yaml");
+const TEMPLATE_ENVIRONMENTS: &str = include_str!("../config/environments.yaml");
+const TEMPLATE_ORKASHADOW: &str = include_str!("../config/orkashadow");
+
 fn main() {
     if let Err(e) = run() {
         eprintln!("orka: {e}");
@@ -33,6 +37,10 @@ fn run() -> Result<(), String> {
     if cli.print_license {
         print!("{LICENSE}");
         return Ok(());
+    }
+
+    if cli.init {
+        return run_init();
     }
 
     let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
@@ -168,6 +176,8 @@ fn run() -> Result<(), String> {
         no_cache: cli.no_cache,
         dry_run: cli.dry_run,
         verbose: cli.verbose,
+        quiet: cli.quiet,
+        no_custom_dockerfile: cli.no_custom_dockerfile,
         preserve_container: cli.preserve_container,
         harness_version: cli.harness_version,
         no_browser: cli.no_browser,
@@ -346,6 +356,39 @@ fn apply_config_defaults(cli: &mut Cli, matches: &clap::ArgMatches) -> Result<co
     }
 
     Ok(defaults)
+}
+
+/// Write the bundled config templates to `~/.config/orka/`.
+///
+/// Each file is written only when it does not already exist so user
+/// customisations are never overwritten.
+fn run_init() -> Result<(), String> {
+    let cfg_dir = config::config_path()
+        .parent()
+        .expect("config path has no parent")
+        .to_path_buf();
+
+    fs::create_dir_all(&cfg_dir)
+        .map_err(|e| format!("failed to create {}: {e}", cfg_dir.display()))?;
+
+    let files: &[(&str, &str)] = &[
+        ("config.yaml", TEMPLATE_CONFIG),
+        ("environments.yaml", TEMPLATE_ENVIRONMENTS),
+        ("orkashadow", TEMPLATE_ORKASHADOW),
+    ];
+
+    for (name, content) in files {
+        let path = cfg_dir.join(name);
+        if path.exists() {
+            println!("skipped  {}", path.display());
+        } else {
+            fs::write(&path, content)
+                .map_err(|e| format!("failed to write {}: {e}", path.display()))?;
+            println!("wrote    {}", path.display());
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

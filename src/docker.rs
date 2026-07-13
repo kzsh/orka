@@ -34,6 +34,7 @@ pub struct RunConfig {
     pub dry_run: bool,
     pub verbose: bool,
     pub quiet: bool,
+    pub no_custom_dockerfile: bool,
     pub preserve_container: bool,
     pub harness_version: Option<String>,
     /// When true, skips passing `INSTALL_AGENT_BROWSER=true` to the pi image build.
@@ -55,14 +56,24 @@ pub struct RunConfig {
 
 /// Write all embedded Dockerfiles and entrypoints into a fresh temp directory
 /// and return it.  The directory is used as the Docker build context.
-fn write_build_context() -> Result<TempDir, String> {
+///
+/// When `~/.config/orka/Dockerfile.base` exists and `cfg.no_custom_dockerfile`
+/// is false, that file is used in place of the embedded base.
+fn write_build_context(cfg: &RunConfig) -> Result<TempDir, String> {
     let dir =
         tempfile::tempdir().map_err(|e| format!("failed to create temp build context: {e}"))?;
 
     fs::write(dir.path().join("Dockerfile"), DOCKERFILE)
         .map_err(|e| format!("failed to write Dockerfile to build context: {e}"))?;
 
-    fs::write(dir.path().join("Dockerfile.base"), DOCKERFILE_BASE)
+    let custom_base_path = crate::config::custom_dockerfile_base_path();
+    let dockerfile_base_content = if !cfg.no_custom_dockerfile && custom_base_path.is_file() {
+        fs::read_to_string(&custom_base_path)
+            .map_err(|e| format!("failed to read {}: {e}", custom_base_path.display()))?
+    } else {
+        DOCKERFILE_BASE.to_string()
+    };
+    fs::write(dir.path().join("Dockerfile.base"), dockerfile_base_content)
         .map_err(|e| format!("failed to write Dockerfile.base to build context: {e}"))?;
 
     fs::write(
@@ -100,7 +111,7 @@ fn write_build_context() -> Result<TempDir, String> {
 
 /// Build both Docker images and, once they are ready, run the container.
 pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
-    let ctx = write_build_context()?;
+    let ctx = write_build_context(cfg)?;
     let ctx_path = ctx
         .path()
         .to_str()
@@ -206,6 +217,9 @@ fn build_base_command(base_ref: &str, ctx_path: &str, cfg: &RunConfig) -> Vec<St
         s("--file"),
         format!("{ctx_path}/Dockerfile.base"),
     ];
+    if cfg.quiet {
+        cmd.push(s("--quiet"));
+    }
     cmd.push(s(ctx_path));
     cmd
 }
@@ -233,6 +247,9 @@ fn build_browser_base_command(
         s("--build-arg"),
         format!("BASE_IMAGE={base_ref}"),
     ];
+    if cfg.quiet {
+        cmd.push(s("--quiet"));
+    }
     cmd.push(s(ctx_path));
     cmd
 }
@@ -270,6 +287,9 @@ fn build_pi_main_command(
     }
     if cfg.no_cache {
         cmd.push(s("--no-cache"));
+    }
+    if cfg.quiet {
+        cmd.push(s("--quiet"));
     }
     cmd.push(s(ctx_path));
     cmd
@@ -382,6 +402,9 @@ fn build_claude_main_command(
     if cfg.no_cache {
         cmd.push(s("--no-cache"));
     }
+    if cfg.quiet {
+        cmd.push(s("--quiet"));
+    }
     cmd.push(s(ctx_path));
     cmd
 }
@@ -488,6 +511,9 @@ fn build_codex_main_command(
     ];
     if cfg.no_cache {
         cmd.push(s("--no-cache"));
+    }
+    if cfg.quiet {
+        cmd.push(s("--quiet"));
     }
     cmd.push(s(ctx_path));
     cmd
@@ -681,6 +707,8 @@ mod tests {
             no_cache: false,
             dry_run: false,
             verbose: false,
+            quiet: false,
+            no_custom_dockerfile: true,
             preserve_container: false,
             harness_version: None,
             no_browser: false,

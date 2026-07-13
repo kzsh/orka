@@ -87,6 +87,10 @@ pub struct Cli {
     #[arg(long)]
     pub quiet: bool,
 
+    /// Ignore ~/.config/orka/Dockerfile.base and use the embedded one instead.
+    #[arg(long)]
+    pub no_custom_dockerfile: bool,
+
     /// Set the LLM agent version to install (default: latest).
     /// Applies to --harness pi only.
     #[arg(long, short = 'v', value_name = "VERSION")]
@@ -121,6 +125,11 @@ pub struct Cli {
     /// Print the license text and exit.
     #[arg(long)]
     pub print_license: bool,
+
+    /// Write default config files to ~/.config/orka/ and exit.
+    /// Skips any file that already exists.
+    #[arg(long)]
+    pub init: bool,
 
     /// Arguments forwarded verbatim to the container (passed to the agent).
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]

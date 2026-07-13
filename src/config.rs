@@ -38,6 +38,12 @@ pub fn global_shadow_path() -> PathBuf {
     orka_config_dir().join("orkashadow")
 }
 
+/// Returns the canonical path to an optional user-supplied `Dockerfile.base`,
+/// honouring `$XDG_CONFIG_HOME`.
+pub fn custom_dockerfile_base_path() -> PathBuf {
+    orka_config_dir().join("Dockerfile.base")
+}
+
 /// Load `config.yaml`.  Returns `Ok(Defaults::default())` when the file does
 /// not exist so callers do not need to special-case a missing file.
 pub fn load_defaults(path: &Path) -> Result<Defaults, String> {
