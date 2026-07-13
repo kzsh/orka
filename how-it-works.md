@@ -1,7 +1,7 @@
 # How it works
 
-> Orka is a thin set of wrapping scripts and container files, written in Rust for portability.  
-> Around 3,000 lines across 7 source files.
+> Orka is a thin CLI written in Rust. It shells out to whichever container engine you have installed — it does not speak the Docker API directly.  
+> Around 3,000 lines across 7 source files. Runs on Linux and macOS; not supported on Windows.
 
 ## Isolation model
 
@@ -31,10 +31,12 @@ patterns are evaluated after global ones and can negate global matches with
 orka supports two classes of backend.
 
 **Container engines** (Docker, Podman, nerdctl) build an OCI image for the
-agent harness and run each session inside a container. The engine binary is
-invoked directly, so behaviour matches whatever version is installed on the
-host. Docker is the default; `--engine podman` or `--engine nerdctl` selects
-an alternative.
+agent harness and run each session inside a container. orka shells out to the
+engine binary — it runs `docker build`, `docker run`, and so on as
+subprocesses. Behaviour therefore matches whatever version of the engine is
+installed on the host. Docker is the default; `--engine podman` or
+`--engine nerdctl` selects an alternative. Pass `--dry-run` to see the exact
+commands that would be issued.
 
 **Bubblewrap** (`--engine bubblewrap`) is a Linux-only user-namespace sandbox.
 It does not build or cache any image. Instead, it bind-mounts a subset of the
@@ -74,4 +76,4 @@ as the invoking user directly.
 
 ## Inspecting a run
 
-If you want to get a sense of how `orka` is building and running containers, try passing `--dry-run` to print the exact build and run commands that would be issued without executing them.
+Pass `--dry-run` to print the exact build and run commands that would be issued without executing them. Because orka shells out to the engine binary, the output is a literal sequence of commands you can copy and run yourself.
