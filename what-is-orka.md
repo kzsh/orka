@@ -2,7 +2,7 @@
 
 Coding agents run as your user, with access to your full home directory, your credentials, your shell history, and anything else reachable from your account. Most of the time that is more access than the task requires.
 
-orka narrows that surface. It builds a container image for the agent runtime of your choice and runs each session inside it. You decide exactly what gets mounted in. Nothing else is reachable.
+orka narrows that surface. It builds a container image for the agent harness of your choice and runs each session inside it. You decide exactly what gets mounted in. Nothing else is reachable.
 
 A secondary benefit is reproducibility: the agent environment is defined by the image and your explicit mounts, not by whatever happens to be in your PATH or shell config at the time.
 
@@ -47,15 +47,15 @@ orka -c
 
 ---
 
-### Choose a runtime
+### Choose a harness
 
 ```sh
-orka --runtime claude
-orka --runtime codex
-orka --runtime pi       # default
+orka --harness claude
+orka --harness codex
+orka --harness pi       # default
 ```
 
-The image for each runtime is built and cached independently.
+The image for each harness is built and cached independently.
 
 ---
 
@@ -110,7 +110,7 @@ Injects an environment variable into the container for a single run without addi
 orka --harness-version 1.2.3
 ```
 
-By default orka installs the latest agent harness. Pin a specific version to keep the environment consistent across machines or to hold at a known-good release after an update. Applies to the `pi` runtime only. Set `harness` in `~/.config/orka/config.yaml` to make the pin permanent.
+By default orka installs the latest agent harness. Pin a specific version to keep the environment consistent across machines or to hold at a known-good release after an update. Applies to the `pi` harness only. Set `harness-version` in `~/.config/orka/config.yaml` to make the pin permanent.
 
 ---
 
@@ -124,11 +124,12 @@ By default the container is removed when the agent exits. `--preserve-container`
 
 ---
 
-### Use a different container engine
+### Use a different backend
 
 ```sh
 orka --engine podman
 orka --engine nerdctl
+orka --engine bubblewrap
 ```
 
-Orka delegates to whichever container engine binary you specify. The default is `docker`. Set a persistent default in `~/.config/orka/config.yaml` to avoid repeating the flag.
+The default backend is `docker`. Podman and nerdctl are container engine alternatives with the same image-based model. Bubblewrap skips the image build entirely and runs the agent binary directly on the host, which requires the agent to be installed beforehand. Set a persistent default in `~/.config/orka/config.yaml` to avoid repeating the flag. See [choosing a backend](choosing-a-backend.md) for a comparison.

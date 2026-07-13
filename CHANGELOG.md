@@ -2,6 +2,8 @@
 
 ## latest
 
+- `--engine bubblewrap` to run the agent in a bubblewrap user-namespace sandbox instead of a container. No image is built; the agent binary must already be installed on the host. Bind-mounts system paths, agent config directories, and user-specified volumes into the namespace. Linux only.
+- `pi-path`, `claude-path`, `codex-path` in `~/.config/orka/config.yaml` to set explicit paths to agent binaries when they are not in a standard location. Used only by the bubblewrap backend.
 - `--engine` to select the container engine: `docker` (default), `podman`, or `nerdctl`. The engine binary is used for all build and run commands.
 - `~/.config/orka/config.yaml` for persistent user defaults. Supports `engine`, `runtime`, `harness`, and `no_browser`. Command-line flags always win. Copy the bundled [`config/config.yaml`](config/config.yaml) to get started.
 - `orkashadow` files to hide sensitive files from the agent. Files matching patterns in `~/.config/orka/orkashadow` (global) or `.orkashadow` (per-repo, placed at the root of any mounted directory) are replaced with empty read-only stubs inside the container. The agent can see the filename but cannot read or write the content. Uses `.gitignore` syntax. Copy the bundled [`config/orkashadow`](config/orkashadow) for annotated examples.

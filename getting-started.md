@@ -2,26 +2,34 @@
 
 ## Prerequisites
 
-A container engine must be installed and running. orka supports Docker (default), Podman, and nerdctl. Verify your engine is available:
+orka supports four backends. The requirements depend on which one you use.
+
+**Docker, Podman, nerdctl** — A container engine must be installed and running. Verify it is available:
 
 ```sh
 docker info
 # or: podman info / nerdctl info
 ```
 
-To use Podman or nerdctl, pass `--engine podman` or `--engine nerdctl` on each invocation, or set `engine` in `~/.config/orka/config.yaml` (see [User defaults](#user-defaults) below).
+orka builds and caches a container image on first run. Subsequent runs reuse the cached image, so the initial build is slower.
 
-orka builds and caches a container image on first run. Subsequent runs reuse the cached image, so the initial build is slower than later ones.
+**Bubblewrap** — No container engine is needed. Bubblewrap (`bwrap`) must be installed (it is available in most Linux distribution package repositories). The agent binary must also be installed on the host before running orka. For pi:
+
+```sh
+bun install -g @earendil-works/pi-coding-agent
+```
+
+See [choosing a backend](choosing-a-backend.md) for a full comparison of all four options.
 
 ## API keys
 
-All three runtimes read API keys from your host environment. orka passes the following variables into the container automatically if they are set:
+All three harnesses read API keys from your host environment. orka passes the following variables into the container automatically if they are set:
 
 | Variable | Used by |
 |---|---|
-| `ANTHROPIC_API_KEY` | `claude` runtime (required); `pi` runtime when running Anthropic models |
-| `OPENAI_API_KEY` | `codex` runtime (required); `pi` runtime when running OpenAI models |
-| `OPEN_ROUTER_KEY` | `pi` runtime when routing through OpenRouter |
+| `ANTHROPIC_API_KEY` | `claude` harness (required); `pi` harness when running Anthropic models |
+| `OPENAI_API_KEY` | `codex` harness (required); `pi` harness when running OpenAI models |
+| `OPEN_ROUTER_KEY` | `pi` harness when routing through OpenRouter |
 
 Export the relevant key(s) in your shell profile (`~/.bashrc`, `~/.zshrc`, etc.):
 
@@ -52,16 +60,16 @@ From a project directory:
 orka
 ```
 
-This mounts the current directory into the container and starts the default runtime (`pi`). The first run downloads and builds the image; expect it to take a minute or two.
+This mounts the current directory into the container and starts the default harness (`pi`). The first run downloads and builds the image; expect it to take a minute or two.
 
-To use a different runtime:
+To use a different harness:
 
 ```sh
-orka --runtime claude
-orka --runtime codex
+orka --harness claude
+orka --harness codex
 ```
 
-Set `runtime` in `~/.config/orka/config.yaml` to make a runtime the default for every session.
+Set `harness` in `~/.config/orka/config.yaml` to make a harness the default for every session.
 
 ## Preset configuration
 
@@ -96,7 +104,8 @@ For a step-by-step guide to writing your own preset, see [writing a preset](writ
 
 ## User defaults
 
-This step is optional. If you always want to use the same engine or runtime without typing the flag every time, create `~/.config/orka/config.yaml` from the [config.yaml](https://raw.githubusercontent.com/kzsh/orka/main/config/config.yaml) template:
+This step is optional. If you always want to use the same engine or harness without typing the flag every time, create `~/.config/orka/config.yaml` from the [config.yaml](https://raw.githubusercontent.com/kzsh/orka/main/config/config.yaml) template:
+
 
 ```sh
 mkdir -p ~/.config/orka
@@ -104,7 +113,19 @@ curl -Lo ~/.config/orka/config.yaml \
   https://raw.githubusercontent.com/kzsh/orka/main/config/config.yaml
 ```
 
-Uncomment and set any of the supported keys: `engine`, `runtime`, `harness`, `no_browser`. The `harness` key pins the agent version installed in the image — useful when you want the environment to stay consistent across machines or after an update. Any flag supplied on the command line takes precedence over the config file.
+Uncomment and set any of the supported keys:
+
+| Key | Description |
+|---|---|
+| `engine` | Backend to use: `docker`, `podman`, `nerdctl`, `bubblewrap` |
+| `harness` | Agent harness: `pi`, `claude`, `codex` |
+| `harness-version` | Harness version to install (pi only; pins to a specific release) |
+| `no_browser` | Skip agent-browser and Chromium (pi only) |
+| `pi-path` | Absolute path to the pi binary (bubblewrap backend only) |
+| `claude-path` | Absolute path to the claude binary (bubblewrap backend only) |
+| `codex-path` | Absolute path to the codex binary (bubblewrap backend only) |
+
+Any flag supplied on the command line takes precedence over the config file.
 
 ## Shadow configuration
 

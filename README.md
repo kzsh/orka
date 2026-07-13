@@ -4,11 +4,11 @@
 
 Orka runs LLM coding agents inside containers. Each session gets only the file-system context you choose to mount. This gives you agent sessions that don't have unrestricted access to your home directory.
 
-Three runtimes are supported: [pi](https://pi.earendil.works), [claude-code](https://docs.anthropic.com/en/docs/claude-code), and [Codex](https://openai.com/index/openai-codex/). 
+Three agent harnesses are supported: [pi](https://pi.earendil.works), [claude-code](https://docs.anthropic.com/en/docs/claude-code), and [Codex](https://openai.com/index/openai-codex/). 
 
-The container image is built on each run first run and cached for subsequent runs. 
+Container engine backends (Docker, Podman, nerdctl) build an OCI image on first run and cache it for subsequent runs. The bubblewrap backend skips the image build entirely and runs the agent binary directly on the host.
 
-See [getting started](getting-started.md), [what is orka](what-is-orka.md), [how it works](how-it-works.md), or [writing a preset](writing-a-preset.md) for more details.
+See [getting started](getting-started.md), [what is orka](what-is-orka.md), [how it works](how-it-works.md), [choosing a backend](choosing-a-backend.md), or [writing a preset](writing-a-preset.md) for more details.
 
 ## Install
 
@@ -58,8 +58,8 @@ orka --scratchpad my-task
 
 | Flag | Description |
 |---|---|
-| `--engine` | Container engine: `docker` (default), `podman`, `nerdctl` |
-| `--runtime` | Agent runtime: `pi` (default), `claude`, `codex` |
+| `--engine` | Backend: `docker` (default), `podman`, `nerdctl`, `bubblewrap` |
+| `--harness` | Agent harness: `pi` (default), `claude`, `codex` |
 | `--preset <NAME>` | Apply a named preset from `environments.yaml`. Repeatable. |
 | `--env <KEY=VALUE>` | Inject an env var into the container. Repeatable. |
 | `--file` / `-f <FILE>` | Mount a specific file instead of the CWD. Repeatable. |
@@ -81,7 +81,7 @@ See [`config/environments.yaml`](config/environments.yaml) for the format.
 
 ## User defaults
 
-Persistent defaults for `engine`, `runtime`, `harness`, and `no_browser` can be set in `~/.config/orka/config.yaml`. Copy the bundled template to get started:
+Persistent defaults can be set in `~/.config/orka/config.yaml`. Copy the bundled template to get started:
 
 ```sh
 mkdir -p ~/.config/orka
@@ -89,7 +89,7 @@ curl -Lo ~/.config/orka/config.yaml \
   https://raw.githubusercontent.com/kzsh/orka/main/config/config.yaml
 ```
 
-Any flag supplied on the command line takes precedence over the config file value.
+Supported keys: `engine`, `harness`, `harness-version`, `no_browser`, `pi-path`, `claude-path`, `codex-path`. The `*-path` keys set the absolute path to each agent binary and are used only by the bubblewrap backend. Any flag supplied on the command line takes precedence over the config file value.
 
 ## Shadowing sensitive files
 
