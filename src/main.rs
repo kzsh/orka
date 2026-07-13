@@ -15,6 +15,7 @@ use cli::Cli;
 use docker::RunConfig;
 
 const LICENSE: &str = include_str!("../PUBLIC-LICENSE");
+const THIRD_PARTY_LICENSES: &str = include_str!("../THIRD_PARTY_LICENSES");
 
 const TEMPLATE_CONFIG: &str = include_str!("../config/config.yaml");
 const TEMPLATE_ENVIRONMENTS: &str = include_str!("../config/environments.yaml");
@@ -36,6 +37,11 @@ fn run() -> Result<(), String> {
 
     if cli.print_license {
         print!("{LICENSE}");
+        println!();
+        println!("This binary incorporates third-party open source components.");
+        println!("Their license texts are reproduced below for attribution.");
+        println!();
+        print!("{THIRD_PARTY_LICENSES}");
         return Ok(());
     }
 
