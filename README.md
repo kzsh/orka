@@ -69,8 +69,9 @@ orka --scratchpad my-task
 | `--no-browser` | Skip installing agent-browser and Chromium (pi only). |
 | `--preserve-container` | Keep the container after it exits instead of removing it automatically. |
 | `--no-cache` | Rebuild the agent image without Docker layer cache. |
+| `--no-custom-dockerfile` | Ignore `~/.config/orka/Dockerfile.base` and use the embedded one. |
 | `--dry-run` | Print commands without running them. |
-| `--verbose` | Show Docker build output (suppressed by default). |
+| `--verbose` | Pass `VERBOSE=1` into the container environment. |
 | `--print-license` | Print the license text and exit. |
 
 ## Presets
@@ -90,6 +91,12 @@ curl -Lo ~/.config/orka/config.yaml \
 ```
 
 Supported keys: `engine`, `harness`, `harness-version`, `no_browser`, `pi-path`, `claude-path`, `codex-path`. The `*-path` keys set the absolute path to each agent binary and are used only by the bubblewrap backend. Any flag supplied on the command line takes precedence over the config file value.
+
+## Custom base image
+
+Place a `Dockerfile.base` in `~/.config/orka/` to override the base image layer. Orka reads it automatically when present and uses it in place of the embedded default. Pass `--no-custom-dockerfile` to force the embedded default regardless.
+
+The base layer installs system packages and (for the pi harness) Chromium. It is built with cache and shared across harnesses, so changes here affect all of them.
 
 ## Global skills
 
