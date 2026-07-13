@@ -91,6 +91,12 @@ curl -Lo ~/.config/orka/config.yaml \
 
 Supported keys: `engine`, `harness`, `harness-version`, `no_browser`, `pi-path`, `claude-path`, `codex-path`. The `*-path` keys set the absolute path to each agent binary and are used only by the bubblewrap backend. Any flag supplied on the command line takes precedence over the config file value.
 
+## Global skills
+
+Orka automatically mounts `~/.agents` into the container when that directory exists on the host. This follows the [Agent Skills standard](https://agentskills.io) convention: `~/.agents/skills/` is the harness-neutral location for skills you want available regardless of which agent you run. Pi discovers skills from that path in addition to `~/.pi/agent/skills/`. Other compliant harnesses do the same.
+
+Without the mount, skills stored in `~/.agents/skills/` would be invisible inside the container. No configuration is required; the mount happens whenever the directory is present.
+
 ## Shadowing sensitive files
 
 Files matching patterns in an `orkashadow` file are replaced with empty read-only stubs inside the container. The agent can see the filename but cannot read or write the content.

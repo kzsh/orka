@@ -1,5 +1,7 @@
 # How it works
 
+Orka is a thin wrapper: container files and launch scripts, with a Rust binary to assemble and invoke them. The Rust layer exists for portability and distribution as a single static binary rather than as shell scripts with dependencies. The full codebase is around 3,000 lines across 7 source files.
+
 ## Isolation model
 
 orka runs the agent inside a container. The agent process has no access to the
