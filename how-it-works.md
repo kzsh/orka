@@ -1,7 +1,7 @@
 # How it works
 
 > Orka is a thin CLI written in Rust. It shells out to whichever container engine you have installed — it does not speak the Docker API directly.  
-> Around 3,000 lines across 7 source files. Runs on Linux and macOS; not supported on Windows.
+> Around 3,000 lines across 7 source files.
 
 ## Isolation model
 
