@@ -341,6 +341,11 @@ fn run_pi_command_args(
         cmd.push(format!("{key}={}", std::env::var(key).unwrap_or_default()));
     }
 
+    if cfg.verbose {
+        cmd.push(s("--env"));
+        cmd.push(s("VERBOSE=1"));
+    }
+
     cmd.push(s("--workdir"));
     cmd.push(cfg.workdir.clone());
     cmd.push(s(main_ref));
