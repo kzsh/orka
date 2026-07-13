@@ -4,7 +4,7 @@ use std::process::{Command, ExitStatus};
 
 use tempfile::TempDir;
 
-use crate::cli::Harness;
+use crate::cli::{Backend, Harness};
 
 // Embed the Docker build context files so the binary is self-contained.
 // These paths are relative to the workspace root (i.e. the directory that
@@ -28,6 +28,7 @@ const CODEX_CONTAINER_NAME: &str = "orka-codex";
 pub struct RunConfig {
     /// Binary name of the container engine (e.g. "docker", "podman", "nerdctl").
     pub engine_binary: String,
+    pub backend: Backend,
     pub harness: Harness,
     pub no_cache: bool,
     pub dry_run: bool,
@@ -311,6 +312,9 @@ fn run_pi_command_args(
     }
     cmd.push(s("--cap-drop=ALL"));
     cmd.push(s("--security-opt=no-new-privileges"));
+    if cfg.backend == Backend::Podman {
+        cmd.push(s("--userns=keep-id"));
+    }
 
     // Pi config/data dir is always mounted so settings persist across runs.
     cmd.push(s("--volume"));
@@ -425,6 +429,9 @@ fn run_claude_command_args(
     }
     cmd.push(s("--cap-drop=ALL"));
     cmd.push(s("--security-opt=no-new-privileges"));
+    if cfg.backend == Backend::Podman {
+        cmd.push(s("--userns=keep-id"));
+    }
 
     // Claude config/data dir is always mounted so conversation history persists.
     cmd.push(s("--volume"));
@@ -523,6 +530,9 @@ fn run_codex_command_args(
     }
     cmd.push(s("--cap-drop=ALL"));
     cmd.push(s("--security-opt=no-new-privileges"));
+    if cfg.backend == Backend::Podman {
+        cmd.push(s("--userns=keep-id"));
+    }
 
     // Codex config/data dir is always mounted so settings and history persist.
     cmd.push(s("--volume"));
@@ -680,6 +690,7 @@ mod tests {
     fn make_cfg(harness: Harness) -> RunConfig {
         RunConfig {
             engine_binary: "docker".to_string(),
+            backend: Backend::Docker,
             harness,
             no_cache: false,
             dry_run: false,
@@ -823,6 +834,32 @@ mod tests {
         let joined = cmd.join(" ");
         assert!(!joined.contains("INSTALL_AGENT_BROWSER"));
         assert!(!joined.contains("browser-base"));
+    }
+
+    #[test]
+    fn podman_run_adds_userns_keep_id() {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+        let pi_dir = format!("{home}/.pi");
+        std::fs::create_dir_all(&pi_dir).unwrap();
+
+        let mut cfg = make_cfg(Harness::Pi);
+        cfg.engine_binary = "podman".to_string();
+        cfg.backend = Backend::Podman;
+        cfg.no_browser = true;
+        let cmd = run_pi_command_args("orka:latest", 1000, 1000, &cfg).unwrap();
+        assert!(cmd.contains(&"--userns=keep-id".to_string()));
+    }
+
+    #[test]
+    fn docker_run_omits_userns_keep_id() {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+        let pi_dir = format!("{home}/.pi");
+        std::fs::create_dir_all(&pi_dir).unwrap();
+
+        let mut cfg = make_cfg(Harness::Pi);
+        cfg.no_browser = true;
+        let cmd = run_pi_command_args("orka:latest", 1000, 1000, &cfg).unwrap();
+        assert!(!cmd.contains(&"--userns=keep-id".to_string()));
     }
 
     #[test]

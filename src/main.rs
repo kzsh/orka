@@ -162,6 +162,7 @@ fn run() -> Result<(), String> {
 
     let run_cfg = RunConfig {
         engine_binary: cli.engine.binary().to_string(),
+        backend: cli.engine,
         harness: cli.harness,
         harness_binary,
         no_cache: cli.no_cache,
