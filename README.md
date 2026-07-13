@@ -1,6 +1,6 @@
 # orka
 
-**Latest:** 2026-07-12
+**Latest:** 2026-07-13
 
 Orka runs LLM coding agents inside containers. Each session gets only the file-system context you choose to mount. This gives you agent sessions that don't have unrestricted access to your home directory.
 
