@@ -33,6 +33,7 @@ pub struct RunConfig {
     pub no_cache: bool,
     pub dry_run: bool,
     pub verbose: bool,
+    pub quiet: bool,
     pub preserve_container: bool,
     pub harness_version: Option<String>,
     /// When true, skips passing `INSTALL_AGENT_BROWSER=true` to the pi image build.
@@ -205,9 +206,6 @@ fn build_base_command(base_ref: &str, ctx_path: &str, cfg: &RunConfig) -> Vec<St
         s("--file"),
         format!("{ctx_path}/Dockerfile.base"),
     ];
-    if !cfg.verbose {
-        cmd.push(s("--quiet"));
-    }
     cmd.push(s(ctx_path));
     cmd
 }
@@ -235,9 +233,6 @@ fn build_browser_base_command(
         s("--build-arg"),
         format!("BASE_IMAGE={base_ref}"),
     ];
-    if !cfg.verbose {
-        cmd.push(s("--quiet"));
-    }
     cmd.push(s(ctx_path));
     cmd
 }
@@ -275,9 +270,6 @@ fn build_pi_main_command(
     }
     if cfg.no_cache {
         cmd.push(s("--no-cache"));
-    }
-    if !cfg.verbose {
-        cmd.push(s("--quiet"));
     }
     cmd.push(s(ctx_path));
     cmd
@@ -390,9 +382,6 @@ fn build_claude_main_command(
     if cfg.no_cache {
         cmd.push(s("--no-cache"));
     }
-    if !cfg.verbose {
-        cmd.push(s("--quiet"));
-    }
     cmd.push(s(ctx_path));
     cmd
 }
@@ -499,9 +488,6 @@ fn build_codex_main_command(
     ];
     if cfg.no_cache {
         cmd.push(s("--no-cache"));
-    }
-    if !cfg.verbose {
-        cmd.push(s("--quiet"));
     }
     cmd.push(s(ctx_path));
     cmd

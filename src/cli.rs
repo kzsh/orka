@@ -79,9 +79,13 @@ pub struct Cli {
     #[arg(long)]
     pub dry_run: bool,
 
-    /// Show build output instead of suppressing it.
+    /// Pass VERBOSE=1 into the container environment.
     #[arg(long)]
     pub verbose: bool,
+
+    /// Suppress image build output.
+    #[arg(long)]
+    pub quiet: bool,
 
     /// Set the LLM agent version to install (default: latest).
     /// Applies to --harness pi only.
