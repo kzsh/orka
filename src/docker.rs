@@ -44,6 +44,9 @@ pub struct RunConfig {
     pub shadow_volumes: Vec<(String, String)>,
     /// Resolved `(key, value)` environment variable pairs.
     pub env_vars: Vec<(String, String)>,
+    /// Explicit path to the agent binary.  Used only by the bwrap backend;
+    /// ignored by all container-engine paths.
+    pub harness_binary: Option<String>,
     pub workdir: String,
     pub container_args: Vec<String>,
 }
@@ -682,6 +685,7 @@ mod tests {
             volumes: vec![],
             shadow_volumes: vec![],
             env_vars: vec![],
+            harness_binary: None,
             workdir: "/work".to_string(),
             container_args: vec![],
         }

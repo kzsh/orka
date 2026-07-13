@@ -132,8 +132,20 @@ fn build_command(cfg: &RunConfig) -> Result<Vec<String>, String> {
         setenv(&mut cmd, key, &std::env::var(key).unwrap_or_default());
     }
 
+    // Resolve the agent binary.  If its parent directory is not already
+    // covered by a pre-mounted path (e.g. /usr, /opt), add an explicit
+    // read-only bind mount for it.
+    let binary = resolve_binary(cfg)?;
+    let binary_dir = std::path::Path::new(&binary)
+        .parent()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| binary.clone());
+    if !binary_dir.is_empty() && !is_path_covered(&binary_dir) {
+        ro_bind_try(&mut cmd, &binary_dir);
+    }
+
     // Agent binary then forwarded arguments.
-    cmd.push(agent_binary(cfg.harness));
+    cmd.push(binary);
     cmd.extend(cfg.container_args.iter().cloned());
 
     Ok(cmd)
@@ -183,13 +195,55 @@ fn agent_config_paths(cfg: &RunConfig, home: &str) -> Result<Vec<String>, String
     Ok(paths)
 }
 
-/// Returns the agent binary name for the given harness.
-fn agent_binary(harness: Harness) -> String {
-    match harness {
-        Harness::Pi => s("pi"),
-        Harness::Claude => s("claude"),
-        Harness::Codex => s("codex"),
+/// Resolve the absolute path to the agent binary.
+///
+/// Uses `cfg.harness_binary` when explicitly configured; otherwise searches
+/// the host PATH.  Returns a clear error if the binary cannot be found,
+/// directing the user to install it or set the config option.
+fn resolve_binary(cfg: &RunConfig) -> Result<String, String> {
+    let name = match cfg.harness {
+        Harness::Pi => "pi",
+        Harness::Claude => "claude",
+        Harness::Codex => "codex",
+    };
+
+    if let Some(ref path) = cfg.harness_binary {
+        if std::path::Path::new(path).is_file() {
+            return Ok(path.clone());
+        }
+        return Err(format!(
+            "configured {name}-path does not exist: {path}"
+        ));
     }
+
+    find_in_path(name).ok_or_else(|| {
+        let install_hint = match cfg.harness {
+            Harness::Pi => "\n  Install with: bun install -g @earendil-works/pi-coding-agent",
+            Harness::Claude | Harness::Codex => "",
+        };
+        format!(
+            "`{name}` not found in PATH.{install_hint}\n  \
+             Or set {name}-path in ~/.config/orka/config.yaml"
+        )
+    })
+}
+
+/// Search the host PATH for a binary by name and return its absolute path.
+fn find_in_path(name: &str) -> Option<String> {
+    let path_env = std::env::var("PATH").unwrap_or_default();
+    std::env::split_paths(&path_env)
+        .map(|dir| dir.join(name))
+        .find(|p| p.is_file())
+        .map(|p| p.to_string_lossy().into_owned())
+}
+
+/// Returns true when `path` is under a directory that is already bind-mounted
+/// read-only by the standard bwrap setup (so no additional mount is needed).
+fn is_path_covered(path: &str) -> bool {
+    // /lib covers /lib32, /lib64, /libx32 as they all start with "/lib".
+    ["/usr/", "/lib", "/bin", "/sbin", "/opt/"]
+        .iter()
+        .any(|prefix| path.starts_with(prefix))
 }
 
 // ---------------------------------------------------------------------------
@@ -284,8 +338,19 @@ fn s(lit: &str) -> String {
 mod tests {
     use super::*;
 
-    fn make_cfg(harness: Harness) -> RunConfig {
-        RunConfig {
+    // Creates a RunConfig with a real temp binary file so resolve_binary
+    // succeeds without needing the agent installed on the test machine.
+    // Returns the TempDir too — caller must keep it alive for the test.
+    fn make_cfg(harness: Harness) -> (RunConfig, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let name = match harness {
+            Harness::Pi => "pi",
+            Harness::Claude => "claude",
+            Harness::Codex => "codex",
+        };
+        let binary = dir.path().join(name);
+        fs::write(&binary, "").unwrap();
+        let cfg = RunConfig {
             engine_binary: s("bwrap"),
             harness,
             no_cache: false,
@@ -294,24 +359,26 @@ mod tests {
             preserve_container: false,
             harness_version: None,
             no_browser: true,
+            harness_binary: Some(binary.to_string_lossy().into_owned()),
             volumes: vec![],
             shadow_volumes: vec![],
             env_vars: vec![],
             workdir: "/work".to_string(),
             container_args: vec![],
-        }
+        };
+        (cfg, dir)
     }
 
     #[test]
     fn command_starts_with_bwrap() {
-        let cfg = make_cfg(Harness::Pi);
+        let (cfg, _dir) = make_cfg(Harness::Pi);
         let cmd = build_command(&cfg).unwrap();
         assert_eq!(cmd[0], "bwrap");
     }
 
     #[test]
     fn command_unshares_all_but_keeps_net() {
-        let cfg = make_cfg(Harness::Pi);
+        let (cfg, _dir) = make_cfg(Harness::Pi);
         let cmd = build_command(&cfg).unwrap();
         let joined = cmd.join(" ");
         assert!(joined.contains("--unshare-all"));
@@ -320,7 +387,7 @@ mod tests {
 
     #[test]
     fn usr_is_ro_bind() {
-        let cfg = make_cfg(Harness::Pi);
+        let (cfg, _dir) = make_cfg(Harness::Pi);
         let cmd = build_command(&cfg).unwrap();
         let pos = cmd
             .windows(3)
@@ -330,45 +397,45 @@ mod tests {
 
     #[test]
     fn workdir_is_chdir_target() {
-        let cfg = make_cfg(Harness::Pi);
+        let (cfg, _dir) = make_cfg(Harness::Pi);
         let cmd = build_command(&cfg).unwrap();
         let idx = cmd.iter().position(|a| a == "--chdir").unwrap();
         assert_eq!(cmd[idx + 1], "/work");
     }
 
     #[test]
-    fn pi_binary_is_last_token_without_args() {
-        let cfg = make_cfg(Harness::Pi);
+    fn binary_is_last_token_pi() {
+        let (cfg, _dir) = make_cfg(Harness::Pi);
         let cmd = build_command(&cfg).unwrap();
-        assert_eq!(cmd.last().unwrap(), "pi");
+        assert!(cmd.last().unwrap().ends_with("/pi"));
     }
 
     #[test]
-    fn claude_binary_is_last_token_without_args() {
-        let cfg = make_cfg(Harness::Claude);
+    fn binary_is_last_token_claude() {
+        let (cfg, _dir) = make_cfg(Harness::Claude);
         let cmd = build_command(&cfg).unwrap();
-        assert_eq!(cmd.last().unwrap(), "claude");
+        assert!(cmd.last().unwrap().ends_with("/claude"));
     }
 
     #[test]
-    fn codex_binary_is_last_token_without_args() {
-        let cfg = make_cfg(Harness::Codex);
+    fn binary_is_last_token_codex() {
+        let (cfg, _dir) = make_cfg(Harness::Codex);
         let cmd = build_command(&cfg).unwrap();
-        assert_eq!(cmd.last().unwrap(), "codex");
+        assert!(cmd.last().unwrap().ends_with("/codex"));
     }
 
     #[test]
     fn container_args_forwarded_after_binary() {
-        let mut cfg = make_cfg(Harness::Pi);
+        let (mut cfg, _dir) = make_cfg(Harness::Pi);
         cfg.container_args = vec!["do the thing".to_string()];
         let cmd = build_command(&cfg).unwrap();
         assert_eq!(cmd.last().unwrap(), "do the thing");
-        assert_eq!(cmd[cmd.len() - 2], "pi");
+        assert!(cmd[cmd.len() - 2].ends_with("/pi"));
     }
 
     #[test]
     fn user_volumes_use_bind() {
-        let mut cfg = make_cfg(Harness::Pi);
+        let (mut cfg, _dir) = make_cfg(Harness::Pi);
         cfg.volumes = vec![("/home/user/proj".to_string(), "/home/user/proj".to_string())];
         let cmd = build_command(&cfg).unwrap();
         let found = cmd
@@ -379,7 +446,7 @@ mod tests {
 
     #[test]
     fn shadow_volumes_use_ro_bind() {
-        let mut cfg = make_cfg(Harness::Pi);
+        let (mut cfg, _dir) = make_cfg(Harness::Pi);
         cfg.shadow_volumes = vec![("/tmp/empty".to_string(), "/project/.env".to_string())];
         let cmd = build_command(&cfg).unwrap();
         let found = cmd
@@ -390,7 +457,7 @@ mod tests {
 
     #[test]
     fn env_vars_use_setenv() {
-        let mut cfg = make_cfg(Harness::Pi);
+        let (mut cfg, _dir) = make_cfg(Harness::Pi);
         cfg.env_vars = vec![("MY_VAR".to_string(), "hello".to_string())];
         let cmd = build_command(&cfg).unwrap();
         let found = cmd
@@ -401,7 +468,7 @@ mod tests {
 
     #[test]
     fn no_browser_skips_agent_browser_mount() {
-        let cfg = make_cfg(Harness::Pi); // no_browser = true
+        let (cfg, _dir) = make_cfg(Harness::Pi); // no_browser = true
         let cmd = build_command(&cfg).unwrap();
         let joined = cmd.join(" ");
         assert!(!joined.contains(".agent-browser"));
@@ -414,7 +481,7 @@ mod tests {
         let prev = std::env::var("HOME").ok();
         std::env::set_var("HOME", &home);
 
-        let mut cfg = make_cfg(Harness::Pi);
+        let (mut cfg, _dir) = make_cfg(Harness::Pi);
         cfg.no_browser = false;
         let result = build_command(&cfg);
 
@@ -429,5 +496,79 @@ mod tests {
             .windows(3)
             .any(|w| w[0] == "--bind" && w[1] == browser_dir && w[2] == browser_dir);
         assert!(found, ".agent-browser should be mounted when browser is enabled");
+    }
+
+    #[test]
+    fn resolve_binary_uses_configured_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let binary = dir.path().join("pi");
+        fs::write(&binary, "").unwrap();
+        let mut cfg = make_cfg(Harness::Pi).0;
+        cfg.harness_binary = Some(binary.to_string_lossy().into_owned());
+        let result = resolve_binary(&cfg).unwrap();
+        assert_eq!(result, binary.to_string_lossy());
+    }
+
+    #[test]
+    fn resolve_binary_errors_on_missing_configured_path() {
+        let mut cfg = make_cfg(Harness::Pi).0;
+        cfg.harness_binary = Some("/nonexistent/pi".to_string());
+        let err = resolve_binary(&cfg).unwrap_err();
+        assert!(err.contains("does not exist"));
+    }
+
+    #[test]
+    fn resolve_binary_errors_when_not_in_path() {
+        // Use a harness name that is guaranteed not to be in PATH.
+        let mut cfg = make_cfg(Harness::Pi).0;
+        cfg.harness_binary = None;
+        // Override PATH to an empty directory so nothing is found.
+        let empty = tempfile::tempdir().unwrap();
+        let prev = std::env::var("PATH").ok();
+        std::env::set_var("PATH", empty.path());
+        let result = resolve_binary(&cfg);
+        match prev {
+            Some(v) => std::env::set_var("PATH", v),
+            None => std::env::remove_var("PATH"),
+        }
+        let err = result.unwrap_err();
+        assert!(err.contains("not found in PATH"));
+        assert!(err.contains("pi-path"));
+    }
+
+    #[test]
+    fn is_path_covered_usr() {
+        assert!(is_path_covered("/usr/local/bin/pi"));
+        assert!(is_path_covered("/usr/bin/pi"));
+    }
+
+    #[test]
+    fn is_path_covered_opt() {
+        assert!(is_path_covered("/opt/pi-bun/bin/pi"));
+    }
+
+    #[test]
+    fn is_path_covered_home_is_not() {
+        assert!(!is_path_covered("/home/user/.bun/bin/pi"));
+        assert!(!is_path_covered("/root/.bun/bin/pi"));
+    }
+
+    #[test]
+    fn uncovered_binary_gets_extra_ro_bind() {
+        // Binary is in a temp dir (not under /usr, /opt, etc.).
+        // build_command should emit an --ro-bind-try for that directory.
+        let (cfg, _dir) = make_cfg(Harness::Pi);
+        let binary = cfg.harness_binary.as_ref().unwrap().clone();
+        let binary_dir = std::path::Path::new(&binary)
+            .parent()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        assert!(!is_path_covered(&binary_dir));
+        let cmd = build_command(&cfg).unwrap();
+        let found = cmd
+            .windows(3)
+            .any(|w| w[0] == "--ro-bind-try" && w[1] == binary_dir && w[2] == binary_dir);
+        assert!(found, "binary dir should get --ro-bind-try when not already covered");
     }
 }

@@ -28,7 +28,7 @@ fn run() -> Result<(), String> {
     let mut cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
 
     // Apply config.yaml defaults for any value the user did not explicitly set.
-    apply_config_defaults(&mut cli, &matches)?;
+    let defaults = apply_config_defaults(&mut cli, &matches)?;
 
     if cli.print_license {
         print!("{LICENSE}");
@@ -154,9 +154,16 @@ fn run() -> Result<(), String> {
 
     // no_browser is passed through; tmp/scratchpad are already resolved into
     // volumes and workdir above.
+    let harness_binary = match cli.harness {
+        cli::Harness::Pi => defaults.pi_path,
+        cli::Harness::Claude => defaults.claude_path,
+        cli::Harness::Codex => defaults.codex_path,
+    };
+
     let run_cfg = RunConfig {
         engine_binary: cli.engine.binary().to_string(),
         harness: cli.harness,
+        harness_binary,
         no_cache: cli.no_cache,
         dry_run: cli.dry_run,
         verbose: cli.verbose,
@@ -303,7 +310,7 @@ fn split_once_eq(s: &str) -> (&str, &str) {
 /// `ValueSource::DefaultValue` was not supplied by the user, so the config
 /// value wins.  Fields supplied on the command line or via environment
 /// variables are left untouched.
-fn apply_config_defaults(cli: &mut Cli, matches: &clap::ArgMatches) -> Result<(), String> {
+fn apply_config_defaults(cli: &mut Cli, matches: &clap::ArgMatches) -> Result<config::Defaults, String> {
     use clap::parser::ValueSource;
 
     let path = config::defaults_path();
@@ -337,7 +344,7 @@ fn apply_config_defaults(cli: &mut Cli, matches: &clap::ArgMatches) -> Result<()
         }
     }
 
-    Ok(())
+    Ok(defaults)
 }
 
 #[cfg(test)]

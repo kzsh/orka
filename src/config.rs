@@ -18,6 +18,13 @@ pub struct Defaults {
     pub harness_version: Option<String>,
     /// When `true`, skips installing the agent-browser extension by default.
     pub no_browser: Option<bool>,
+    /// Explicit path to the pi binary (bwrap backend only).
+    /// When absent, pi is located by searching PATH.
+    pub pi_path: Option<String>,
+    /// Explicit path to the claude binary (bwrap backend only).
+    pub claude_path: Option<String>,
+    /// Explicit path to the codex binary (bwrap backend only).
+    pub codex_path: Option<String>,
 }
 
 /// Returns the canonical path to `config.yaml`, honouring `$XDG_CONFIG_HOME`.
