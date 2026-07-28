@@ -1,12 +1,14 @@
 # Intermediate layer between the apt base and the final pi image.
-# Installs agent-browser and downloads its Chromium binary into /opt/browser-cache
-# so that rebuilding the final image (to pull the latest pi) does not trigger a
-# fresh npm install or a Chromium re-download every time.
+# Downloads the agent-browser binary and its Chromium dependency into
+# /opt/browser-cache so that rebuilding the final image (to pull the latest pi)
+# does not trigger a fresh download every time.
 #
 # Rebuild this image only when you want a newer version of agent-browser.
 
 ARG BASE_IMAGE=orka-base:latest
 FROM ${BASE_IMAGE}
+
+ARG VERSION=latest
 
 # Chromium system library dependencies.  Must run as root.
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -45,21 +47,36 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libasound2 \
     && rm -rf /var/lib/apt/lists/*
 
-# Create stable, home-independent directories for the bun global install and
-# the Chromium binary, then hand ownership to the bun user so the install steps
-# below can write to them without root.
-RUN mkdir -p /opt/pi-bun /opt/browser-cache \
-    && chown bun:bun /opt/pi-bun /opt/browser-cache
+# Download the agent-browser binary from GitHub releases and install it.
+# Uses the musl variant for maximum portability inside the container.
+RUN set -eux && \
+    ARCH=$(uname -m) && \
+    case "$ARCH" in \
+      x86_64)  TARGET="linux-musl-x64" ;; \
+      aarch64) TARGET="linux-musl-arm64" ;; \
+      *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; \
+    esac && \
+    if [ "$VERSION" = "latest" ]; then \
+      TAG=$(curl -fsSL https://api.github.com/repos/vercel-labs/agent-browser/releases/latest \
+            | jq -r .tag_name); \
+    else \
+      TAG="v${VERSION}"; \
+    fi && \
+    curl -fsSL "https://github.com/vercel-labs/agent-browser/releases/download/${TAG}/agent-browser-${TARGET}" \
+      -o /usr/local/bin/agent-browser && \
+    chmod +x /usr/local/bin/agent-browser && \
+    agent-browser --version
+
+# Create a stable, home-independent directory for the Chromium binary cache
+# and hand ownership to the bun user so the install step below can write to it.
+RUN mkdir -p /opt/browser-cache \
+    && chown bun:bun /opt/browser-cache
 
 USER bun
 ENV HOME="/home/bun"
-ENV BUN_INSTALL="/opt/pi-bun"
-ENV BUN_INSTALL_BIN="/opt/pi-bun/bin"
-ENV PATH="/opt/pi-bun/bin:$PATH"
 
 # Point Playwright (used by agent-browser) at a fixed path so Chromium lands
 # in the image at a location independent of the runtime user's home directory.
 ENV PLAYWRIGHT_BROWSERS_PATH="/opt/browser-cache"
 
-RUN bun install --global agent-browser && \
-    agent-browser install
+RUN agent-browser install
