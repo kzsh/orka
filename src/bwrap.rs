@@ -61,7 +61,9 @@ fn build_command(cfg: &RunConfig) -> Result<Vec<String>, String> {
     // Read-only system paths.  /usr always exists; everything else is
     // --ro-bind-try to handle distros where /bin is a symlink into /usr.
     ro_bind(&mut cmd, "/usr");
-    for path in ["/lib", "/lib32", "/lib64", "/libx32", "/bin", "/sbin", "/opt"] {
+    for path in [
+        "/lib", "/lib32", "/lib64", "/libx32", "/bin", "/sbin", "/opt",
+    ] {
         ro_bind_try(&mut cmd, path);
     }
 
@@ -120,8 +122,7 @@ fn build_command(cfg: &RunConfig) -> Result<Vec<String>, String> {
     setenv(
         &mut cmd,
         "PATH",
-        &std::env::var("PATH")
-            .unwrap_or_else(|_| "/usr/local/bin:/usr/bin:/bin".to_string()),
+        &std::env::var("PATH").unwrap_or_else(|_| "/usr/local/bin:/usr/bin:/bin".to_string()),
     );
 
     for (key, val) in &cfg.env_vars {
@@ -158,8 +159,7 @@ fn agent_config_paths(cfg: &RunConfig, home: &str) -> Result<Vec<String>, String
     match cfg.harness {
         Harness::Pi => {
             let pi_dir = format!("{home}/.pi");
-            fs::create_dir_all(&pi_dir)
-                .map_err(|e| format!("failed to create {pi_dir}: {e}"))?;
+            fs::create_dir_all(&pi_dir).map_err(|e| format!("failed to create {pi_dir}: {e}"))?;
             paths.push(pi_dir);
         }
         Harness::Claude => {
@@ -203,9 +203,7 @@ fn resolve_binary(cfg: &RunConfig) -> Result<String, String> {
         if std::path::Path::new(path).is_file() {
             return Ok(path.clone());
         }
-        return Err(format!(
-            "configured {name}-path does not exist: {path}"
-        ));
+        return Err(format!("configured {name}-path does not exist: {path}"));
     }
 
     find_in_path(name).ok_or_else(|| {
@@ -530,6 +528,9 @@ mod tests {
         let found = cmd
             .windows(3)
             .any(|w| w[0] == "--ro-bind-try" && w[1] == binary_dir && w[2] == binary_dir);
-        assert!(found, "binary dir should get --ro-bind-try when not already covered");
+        assert!(
+            found,
+            "binary dir should get --ro-bind-try when not already covered"
+        );
     }
 }

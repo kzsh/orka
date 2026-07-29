@@ -3,7 +3,7 @@ use serde::Deserialize;
 
 /// Isolation backend to use for sandboxing the agent.
 ///
-/// Container engines (docker, podman, nerdctl) build an OCI image and run it.
+/// Container engines (docker, podman) build an OCI image and run it.
 /// Bubblewrap skips the image entirely and directly namespaces the host
 /// filesystem — lighter weight but Linux-only.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, ValueEnum, Deserialize)]
@@ -12,7 +12,6 @@ pub enum Backend {
     #[default]
     Docker,
     Podman,
-    Nerdctl,
     /// Lightweight Linux-only sandbox; no image build step required.
     Bubblewrap,
 }
@@ -24,7 +23,6 @@ impl Backend {
         match self {
             Backend::Docker => "docker",
             Backend::Podman => "podman",
-            Backend::Nerdctl => "nerdctl",
             Backend::Bubblewrap => "bwrap",
         }
     }
@@ -51,9 +49,9 @@ pub enum Harness {
 #[derive(Parser, Debug)]
 #[command(name = "orka", about = "Agent harness container wrapper", version)]
 pub struct Cli {
-    /// Isolation backend.  Container engines (docker/podman/nerdctl) build an
-    /// OCI image; bubblewrap sandboxes the host filesystem directly (Linux only,
-    /// no image build required).
+    /// Isolation backend.  Container engines (docker/podman) build an OCI image;
+    /// bubblewrap sandboxes the host filesystem directly (Linux only, no image
+    /// build required).
     #[arg(long, value_enum, default_value = "docker")]
     pub engine: Backend,
 
@@ -121,5 +119,4 @@ pub struct Cli {
     /// Skips any file that already exists.
     #[arg(long)]
     pub init: bool,
-
 }

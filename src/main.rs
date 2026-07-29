@@ -37,17 +37,17 @@ fn run() -> Result<(), String> {
         None => (raw, vec![]),
     };
 
-    let matches = Cli::command().try_get_matches_from(orka_argv).unwrap_or_else(|e| {
-        if e.kind() == clap::error::ErrorKind::UnknownArgument {
-            let _ = e.print();
-            eprintln!(
-                "\nnote: to pass arguments to the agent, separate them with '--':"
-            );
-            eprintln!("  orka [OPTIONS] -- <agent args>");
-            std::process::exit(2);
-        }
-        e.exit()
-    });
+    let matches = Cli::command()
+        .try_get_matches_from(orka_argv)
+        .unwrap_or_else(|e| {
+            if e.kind() == clap::error::ErrorKind::UnknownArgument {
+                let _ = e.print();
+                eprintln!("\nnote: to pass arguments to the agent, separate them with '--':");
+                eprintln!("  orka [OPTIONS] -- <agent args>");
+                std::process::exit(2);
+            }
+            e.exit()
+        });
     let mut cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
 
     // Apply config.yaml defaults for any value the user did not explicitly set.
@@ -341,7 +341,10 @@ fn split_once_eq(s: &str) -> (&str, &str) {
 /// `ValueSource::DefaultValue` was not supplied by the user, so the config
 /// value wins.  Fields supplied on the command line or via environment
 /// variables are left untouched.
-fn apply_config_defaults(cli: &mut Cli, matches: &clap::ArgMatches) -> Result<config::Defaults, String> {
+fn apply_config_defaults(
+    cli: &mut Cli,
+    matches: &clap::ArgMatches,
+) -> Result<config::Defaults, String> {
     use clap::parser::ValueSource;
 
     let path = config::defaults_path();

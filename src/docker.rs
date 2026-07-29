@@ -24,7 +24,7 @@ const CODEX_CONTAINER_NAME: &str = "orka-codex";
 
 /// Everything the caller needs to communicate to the build+run sequence.
 pub struct RunConfig {
-    /// Binary name of the container engine (e.g. "docker", "podman", "nerdctl").
+    /// Binary name of the container engine (e.g. "docker", "podman").
     pub engine_binary: String,
     pub backend: Backend,
     pub harness: Harness,
@@ -99,11 +99,10 @@ fn write_build_context() -> Result<TempDir, String> {
 
 /// Build both Docker images and, once they are ready, run the container.
 ///
-/// Build steps are skipped when the image already exists locally:
-/// - Base image: only built when absent; never rebuilt automatically because
-///   its content (apt packages) is pinned at build time.
-/// - Harness image: only built when absent, or when `--no-cache` is set
-///   (which is the deliberate signal to pull a fresh harness version).
+/// The harness image is always rebuilt so that the baked-in UNAME/UID/GID
+/// stay in sync with the host user running orka.  The base image (apt deps)
+/// is only built when it is absent or when `--no-cache` is passed, because
+/// its content changes rarely and rebuilding it is slow.
 pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
     let ctx;
     let ctx_path_owned;
@@ -118,7 +117,11 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
     let need_base = cfg.no_cache || !image_exists(&cfg.engine_binary, &base_ref);
 
     let tag = match cfg.harness {
-        Harness::Pi => cfg.harness_version.as_deref().unwrap_or("latest").to_string(),
+        Harness::Pi => cfg
+            .harness_version
+            .as_deref()
+            .unwrap_or("latest")
+            .to_string(),
         _ => "latest".to_string(),
     };
     let main_ref = match cfg.harness {
@@ -126,7 +129,7 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
         Harness::Claude => format!("{CLAUDE_CONTAINER_NAME}:latest"),
         Harness::Codex => format!("{CODEX_CONTAINER_NAME}:latest"),
     };
-    let need_main = cfg.no_cache || !image_exists(&cfg.engine_binary, &main_ref);
+    let need_main = true;
 
     // Only write the build context when at least one image needs building.
     let base_build;
@@ -764,19 +767,6 @@ mod tests {
     }
 
     #[test]
-    fn nerdctl_run_omits_userns_keep_id() {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
-        let pi_dir = format!("{home}/.pi");
-        std::fs::create_dir_all(&pi_dir).unwrap();
-
-        let mut cfg = make_cfg(Harness::Pi);
-        cfg.engine_binary = "nerdctl".to_string();
-        cfg.backend = Backend::Nerdctl;
-        let cmd = run_pi_command_args("orka:latest", 1000, 1000, &cfg).unwrap();
-        assert!(!cmd.contains(&"--userns=keep-id".to_string()));
-    }
-
-    #[test]
     fn docker_run_omits_userns_keep_id() {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
         let pi_dir = format!("{home}/.pi");
@@ -790,7 +780,10 @@ mod tests {
     #[test]
     fn image_exists_returns_false_for_nonexistent_image() {
         // Use a tag that cannot exist in any real registry to guarantee absence.
-        assert!(!image_exists("docker", "orka-test-does-not-exist:__never__"));
+        assert!(!image_exists(
+            "docker",
+            "orka-test-does-not-exist:__never__"
+        ));
     }
 
     #[test]

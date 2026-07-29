@@ -10,7 +10,7 @@ use crate::cli::{Backend, Harness};
 /// leave the corresponding CLI default in place.
 #[derive(Debug, Deserialize, Default)]
 pub struct Defaults {
-    /// Default isolation backend (`docker`, `podman`, `nerdctl`, `bubblewrap`).
+    /// Default isolation backend (`docker`, `podman`, `bubblewrap`).
     pub engine: Option<Backend>,
     /// Default agent harness (`pi`, `claude`, `codex`).
     pub harness: Option<Harness>,
@@ -159,9 +159,9 @@ environments:
 
     #[test]
     fn parse_defaults_partial() {
-        let yaml = "engine: nerdctl\n";
+        let yaml = "engine: podman\n";
         let d: Defaults = serde_yml::from_str(yaml).unwrap();
-        assert_eq!(d.engine, Some(Backend::Nerdctl));
+        assert_eq!(d.engine, Some(Backend::Podman));
         assert!(d.harness.is_none());
         assert!(d.harness_version.is_none());
     }
