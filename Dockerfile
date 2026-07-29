@@ -13,7 +13,8 @@ ARG VERSION=latest
 # have the correct ownership inside the container.
 RUN set -e; \
     getent group  "$USER_GID" >/dev/null 2>&1 || groupadd  -g "$USER_GID" "$UNAME"; \
-    getent passwd "$USER_UID" >/dev/null 2>&1 || useradd -m -u "$USER_UID" -g "$USER_GID" -s /bin/bash "$UNAME"
+    getent passwd "$USER_UID" >/dev/null 2>&1 || useradd -m -u "$USER_UID" -g "$USER_GID" -s /bin/bash "$UNAME"; \
+    mkdir -p "/home/$UNAME"
 
 RUN chown -R "$USER_UID:$USER_GID" /home/$UNAME
 

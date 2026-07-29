@@ -286,8 +286,6 @@ fn run_pi_command_args(
     let mut cmd = vec![
         cfg.engine_binary.clone(),
         s("run"),
-        s("--user"),
-        format!("{uid}:{gid}"),
         s("--interactive"),
         s("--tty"),
     ];
@@ -297,7 +295,14 @@ fn run_pi_command_args(
     cmd.push(s("--cap-drop=ALL"));
     cmd.push(s("--security-opt=no-new-privileges"));
     if matches!(cfg.backend, Backend::Podman) {
+        // --userns=keep-id maps the host user into the container at the same
+        // UID without a name lookup.  Passing --user uid:gid on top would
+        // make Podman reverse-resolve the numeric UID to a username, which
+        // fails for LDAP/sssd users that are absent from /etc/passwd.
         cmd.push(s("--userns=keep-id"));
+    } else {
+        cmd.push(s("--user"));
+        cmd.push(format!("{uid}:{gid}"));
     }
 
     // Pi config/data dir is always mounted so settings persist across runs.
@@ -396,8 +401,6 @@ fn run_claude_command_args(
     let mut cmd = vec![
         cfg.engine_binary.clone(),
         s("run"),
-        s("--user"),
-        format!("{uid}:{gid}"),
         s("--interactive"),
         s("--tty"),
     ];
@@ -408,6 +411,9 @@ fn run_claude_command_args(
     cmd.push(s("--security-opt=no-new-privileges"));
     if matches!(cfg.backend, Backend::Podman) {
         cmd.push(s("--userns=keep-id"));
+    } else {
+        cmd.push(s("--user"));
+        cmd.push(format!("{uid}:{gid}"));
     }
 
     // Claude config/data dir is always mounted so conversation history persists.
@@ -497,8 +503,6 @@ fn run_codex_command_args(
     let mut cmd = vec![
         cfg.engine_binary.clone(),
         s("run"),
-        s("--user"),
-        format!("{uid}:{gid}"),
         s("--interactive"),
         s("--tty"),
     ];
@@ -509,6 +513,9 @@ fn run_codex_command_args(
     cmd.push(s("--security-opt=no-new-privileges"));
     if matches!(cfg.backend, Backend::Podman) {
         cmd.push(s("--userns=keep-id"));
+    } else {
+        cmd.push(s("--user"));
+        cmd.push(format!("{uid}:{gid}"));
     }
 
     // Codex config/data dir is always mounted so settings and history persist.
@@ -775,6 +782,38 @@ mod tests {
         let cfg = make_cfg(Harness::Pi);
         let cmd = run_pi_command_args("orka:latest", 1000, 1000, &cfg).unwrap();
         assert!(!cmd.contains(&"--userns=keep-id".to_string()));
+    }
+
+    /// Podman resolves a numeric `--user` back to a username, which fails for
+    /// LDAP/sssd accounts missing from /etc/passwd.  `--userns=keep-id`
+    /// already pins the container UID to the host UID, so `--user` must be
+    /// omitted entirely under Podman.
+    #[test]
+    fn podman_run_omits_user_flag_for_every_harness() {
+        for harness in [Harness::Pi, Harness::Claude, Harness::Codex] {
+            let cmd = run_args_for(harness, Backend::Podman);
+            assert!(
+                !cmd.contains(&"--user".to_string()),
+                "podman command must not pass --user: {cmd:?}"
+            );
+            assert!(
+                cmd.contains(&"--userns=keep-id".to_string()),
+                "podman command must pass --userns=keep-id: {cmd:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn docker_run_passes_user_flag_for_every_harness() {
+        for harness in [Harness::Pi, Harness::Claude, Harness::Codex] {
+            let cmd = run_args_for(harness, Backend::Docker);
+            let idx = cmd
+                .iter()
+                .position(|a| a == "--user")
+                .unwrap_or_else(|| panic!("docker command must pass --user: {cmd:?}"));
+            assert_eq!(cmd[idx + 1], "1000:1000");
+            assert!(!cmd.contains(&"--userns=keep-id".to_string()));
+        }
     }
 
     #[test]
