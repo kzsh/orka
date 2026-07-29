@@ -9,9 +9,10 @@ ARG USER_GID=1000
 ARG UNAME=appuser
 ARG VERSION=latest
 
-# Create a new group and user with the specified IDs
-RUN groupadd -g $USER_GID -o $UNAME && \
-    useradd -m -u $USER_UID -g $USER_GID -o -s /bin/bash $UNAME
+# Create a group and user matching the host's uid/gid so volume-mounted paths
+# have the correct ownership inside the container.
+RUN groupadd -g $USER_GID $UNAME && \
+    useradd -m -u $USER_UID -g $USER_GID -s /bin/bash $UNAME
 
 RUN chown -R "$USER_UID:$USER_GID" /home/$UNAME
 
