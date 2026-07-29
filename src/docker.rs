@@ -98,12 +98,15 @@ fn write_build_context() -> Result<TempDir, String> {
 }
 
 /// Build both Docker images and, once they are ready, run the container.
+///
+/// Build steps are skipped when the image already exists locally:
+/// - Base image: only built when absent; never rebuilt automatically because
+///   its content (apt packages) is pinned at build time.
+/// - Harness image: only built when absent, or when `--no-cache` is set
+///   (which is the deliberate signal to pull a fresh harness version).
 pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
-    let ctx = write_build_context()?;
-    let ctx_path = ctx
-        .path()
-        .to_str()
-        .ok_or_else(|| "temp build context path contains non-UTF-8 characters".to_string())?;
+    let ctx;
+    let ctx_path_owned;
 
     let base_ref = format!("{BASE_CONTAINER_NAME}:latest");
     let uid = current_uid();
@@ -112,34 +115,74 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
         .or_else(|_| std::env::var("LOGNAME"))
         .unwrap_or_else(|_| "appuser".to_string());
 
-    let base_build = build_base_command(&base_ref, ctx_path, cfg);
+    let need_base = cfg.no_cache || !image_exists(&cfg.engine_binary, &base_ref);
 
-    let (main_build, run_cmd) = match cfg.harness {
-        Harness::Pi => {
-            let tag = cfg.harness_version.as_deref().unwrap_or("latest");
-            let main_ref = format!("{PI_CONTAINER_NAME}:{tag}");
-            let b = build_pi_main_command(&main_ref, &base_ref, &uname, uid, gid, ctx_path, cfg);
-            let r = run_pi_command_args(&main_ref, uid, gid, cfg)?;
-            (b, r)
-        }
-        Harness::Claude => {
-            let main_ref = format!("{CLAUDE_CONTAINER_NAME}:latest");
-            let b =
-                build_claude_main_command(&main_ref, &base_ref, &uname, uid, gid, ctx_path, cfg);
-            let r = run_claude_command_args(&main_ref, uid, gid, cfg)?;
-            (b, r)
-        }
-        Harness::Codex => {
-            let main_ref = format!("{CODEX_CONTAINER_NAME}:latest");
-            let b = build_codex_main_command(&main_ref, &base_ref, &uname, uid, gid, ctx_path, cfg);
-            let r = run_codex_command_args(&main_ref, uid, gid, cfg)?;
-            (b, r)
-        }
+    let tag = match cfg.harness {
+        Harness::Pi => cfg.harness_version.as_deref().unwrap_or("latest").to_string(),
+        _ => "latest".to_string(),
+    };
+    let main_ref = match cfg.harness {
+        Harness::Pi => format!("{PI_CONTAINER_NAME}:{tag}"),
+        Harness::Claude => format!("{CLAUDE_CONTAINER_NAME}:latest"),
+        Harness::Codex => format!("{CODEX_CONTAINER_NAME}:latest"),
+    };
+    let need_main = cfg.no_cache || !image_exists(&cfg.engine_binary, &main_ref);
+
+    // Only write the build context when at least one image needs building.
+    let base_build;
+    let main_build;
+    if need_base || need_main {
+        ctx = write_build_context()?;
+        ctx_path_owned = ctx
+            .path()
+            .to_str()
+            .ok_or_else(|| "temp build context path contains non-UTF-8 characters".to_string())?
+            .to_string();
+        let ctx_path = &ctx_path_owned;
+
+        base_build = if need_base {
+            Some(build_base_command(&base_ref, ctx_path, cfg))
+        } else {
+            None
+        };
+        main_build = if need_main {
+            let cmd = match cfg.harness {
+                Harness::Pi => {
+                    build_pi_main_command(&main_ref, &base_ref, &uname, uid, gid, ctx_path, cfg)
+                }
+                Harness::Claude => {
+                    build_claude_main_command(&main_ref, &base_ref, &uname, uid, gid, ctx_path, cfg)
+                }
+                Harness::Codex => {
+                    build_codex_main_command(&main_ref, &base_ref, &uname, uid, gid, ctx_path, cfg)
+                }
+            };
+            Some(cmd)
+        } else {
+            None
+        };
+    } else {
+        base_build = None;
+        main_build = None;
+    }
+
+    let run_cmd = match cfg.harness {
+        Harness::Pi => run_pi_command_args(&main_ref, uid, gid, cfg)?,
+        Harness::Claude => run_claude_command_args(&main_ref, uid, gid, cfg)?,
+        Harness::Codex => run_codex_command_args(&main_ref, uid, gid, cfg)?,
     };
 
     if cfg.dry_run {
-        print_dry_run("base image build", &base_build);
-        print_dry_run("main image build", &main_build);
+        if let Some(ref cmd) = base_build {
+            print_dry_run("base image build", cmd);
+        } else {
+            println!("[DRY_RUN] base image build: skipped (image exists)");
+        }
+        if let Some(ref cmd) = main_build {
+            print_dry_run("main image build", cmd);
+        } else {
+            println!("[DRY_RUN] main image build: skipped (image exists)");
+        }
         print_dry_run("container run", &run_cmd);
         return Ok(());
     }
@@ -155,8 +198,12 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
         println!("=====================");
     }
 
-    exec(&base_build)?;
-    exec(&main_build)?;
+    if let Some(ref cmd) = base_build {
+        exec(cmd)?;
+    }
+    if let Some(ref cmd) = main_build {
+        exec(cmd)?;
+    }
     exec(&run_cmd)?;
 
     Ok(())
@@ -495,6 +542,21 @@ fn run_codex_command_args(
 // Execution helpers
 // ---------------------------------------------------------------------------
 
+/// Returns true when the image `image_ref` is already present in the local
+/// store of the given container engine.  A non-zero exit code (image not
+/// found) is silently treated as `false`; actual execution errors (engine
+/// binary missing, etc.) also return `false` so the caller falls back to a
+/// normal build.
+fn image_exists(engine: &str, image_ref: &str) -> bool {
+    Command::new(engine)
+        .args(["image", "inspect", "--format", "{{.Id}}", image_ref])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
 fn exec(args: &[String]) -> Result<(), String> {
     let (program, rest) = args
         .split_first()
@@ -723,6 +785,12 @@ mod tests {
         let cfg = make_cfg(Harness::Pi);
         let cmd = run_pi_command_args("orka:latest", 1000, 1000, &cfg).unwrap();
         assert!(!cmd.contains(&"--userns=keep-id".to_string()));
+    }
+
+    #[test]
+    fn image_exists_returns_false_for_nonexistent_image() {
+        // Use a tag that cannot exist in any real registry to guarantee absence.
+        assert!(!image_exists("docker", "orka-test-does-not-exist:__never__"));
     }
 
     #[test]
