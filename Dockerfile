@@ -11,8 +11,9 @@ ARG VERSION=latest
 
 # Create a group and user matching the host's uid/gid so volume-mounted paths
 # have the correct ownership inside the container.
-RUN groupadd -g $USER_GID $UNAME && \
-    useradd -m -u $USER_UID -g $USER_GID -s /bin/bash $UNAME
+RUN set -e; \
+    getent group  "$USER_GID" >/dev/null 2>&1 || groupadd  -g "$USER_GID" "$UNAME"; \
+    getent passwd "$USER_UID" >/dev/null 2>&1 || useradd -m -u "$USER_UID" -g "$USER_GID" -s /bin/bash "$UNAME"
 
 RUN chown -R "$USER_UID:$USER_GID" /home/$UNAME
 
