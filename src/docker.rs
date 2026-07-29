@@ -246,7 +246,7 @@ fn run_pi_command_args(
     }
     cmd.push(s("--cap-drop=ALL"));
     cmd.push(s("--security-opt=no-new-privileges"));
-    if matches!(cfg.backend, Backend::Podman | Backend::Nerdctl) {
+    if matches!(cfg.backend, Backend::Podman) {
         cmd.push(s("--userns=keep-id"));
     }
 
@@ -356,7 +356,7 @@ fn run_claude_command_args(
     }
     cmd.push(s("--cap-drop=ALL"));
     cmd.push(s("--security-opt=no-new-privileges"));
-    if matches!(cfg.backend, Backend::Podman | Backend::Nerdctl) {
+    if matches!(cfg.backend, Backend::Podman) {
         cmd.push(s("--userns=keep-id"));
     }
 
@@ -457,7 +457,7 @@ fn run_codex_command_args(
     }
     cmd.push(s("--cap-drop=ALL"));
     cmd.push(s("--security-opt=no-new-privileges"));
-    if matches!(cfg.backend, Backend::Podman | Backend::Nerdctl) {
+    if matches!(cfg.backend, Backend::Podman) {
         cmd.push(s("--userns=keep-id"));
     }
 
@@ -702,7 +702,7 @@ mod tests {
     }
 
     #[test]
-    fn nerdctl_run_adds_userns_keep_id() {
+    fn nerdctl_run_omits_userns_keep_id() {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
         let pi_dir = format!("{home}/.pi");
         std::fs::create_dir_all(&pi_dir).unwrap();
@@ -711,7 +711,7 @@ mod tests {
         cfg.engine_binary = "nerdctl".to_string();
         cfg.backend = Backend::Nerdctl;
         let cmd = run_pi_command_args("orka:latest", 1000, 1000, &cfg).unwrap();
-        assert!(cmd.contains(&"--userns=keep-id".to_string()));
+        assert!(!cmd.contains(&"--userns=keep-id".to_string()));
     }
 
     #[test]
