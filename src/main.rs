@@ -29,7 +29,25 @@ fn main() {
 }
 
 fn run() -> Result<(), String> {
-    let matches = Cli::command().get_matches();
+    // Split argv at `--`: everything before goes to clap, everything after is
+    // forwarded verbatim to the container.
+    let raw: Vec<String> = std::env::args().collect();
+    let (orka_argv, container_args) = match raw.iter().position(|a| a == "--") {
+        Some(pos) => (raw[..pos].to_vec(), raw[pos + 1..].to_vec()),
+        None => (raw, vec![]),
+    };
+
+    let matches = Cli::command().try_get_matches_from(orka_argv).unwrap_or_else(|e| {
+        if e.kind() == clap::error::ErrorKind::UnknownArgument {
+            let _ = e.print();
+            eprintln!(
+                "\nnote: to pass arguments to the agent, separate them with '--':"
+            );
+            eprintln!("  orka [OPTIONS] -- <agent args>");
+            std::process::exit(2);
+        }
+        e.exit()
+    });
     let mut cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
 
     // Apply config.yaml defaults for any value the user did not explicitly set.
@@ -103,7 +121,7 @@ fn run() -> Result<(), String> {
     // Prepend a context snippet to the task prompt so the agent understands the
     // constraints of this environment.  Only injected when a task is present;
     // interactive sessions (no container_args) don't need it.
-    let mut container_args = cli.container_args;
+    let mut container_args = container_args;
     if !container_args.is_empty() {
         if let Some(snippet) =
             prompt_context_snippet(cli.tmp, cli.scratchpad.as_deref(), &mounted_files)

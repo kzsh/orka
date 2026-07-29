@@ -131,7 +131,4 @@ pub struct Cli {
     #[arg(long)]
     pub init: bool,
 
-    /// Arguments forwarded verbatim to the container (passed to the agent).
-    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
-    pub container_args: Vec<String>,
 }
