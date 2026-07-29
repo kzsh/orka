@@ -8,7 +8,12 @@ use crate::cli::{Backend, Harness};
 
 /// User defaults from `config.yaml`.  Every field is optional; absent fields
 /// leave the corresponding CLI default in place.
+///
+/// Keys are kebab-case (`harness-version`, `pi-path`), matching the shipped
+/// template and the documented format.  Unknown keys are rejected so a typo
+/// fails loudly instead of being silently ignored.
 #[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Defaults {
     /// Default isolation backend (`docker`, `podman`, `bubblewrap`).
     pub engine: Option<Backend>,
@@ -50,11 +55,31 @@ pub fn load_defaults(path: &Path) -> Result<Defaults, String> {
     }
     let content =
         fs::read_to_string(path).map_err(|e| format!("failed to read {}: {e}", path.display()))?;
-    serde_yml::from_str(&content).map_err(|e| format!("failed to parse {}: {e}", path.display()))
+    parse(&content, path)
+}
+
+/// Deserialize one of our YAML config files.
+///
+/// A document holding no values -- empty, or comments only, as the shipped
+/// templates are -- means "use the defaults".  YAML resolves that to null,
+/// which a parser may legitimately refuse to treat as a mapping, so the policy
+/// is enforced here instead of relying on parser leniency.
+fn parse<T: serde::de::DeserializeOwned + Default + 'static>(
+    content: &str,
+    path: &Path,
+) -> Result<T, String> {
+    if content.lines().all(|line| {
+        let t = line.trim();
+        t.is_empty() || t.starts_with('#')
+    }) {
+        return Ok(T::default());
+    }
+    noyalib::from_str(content).map_err(|e| format!("failed to parse {}: {e}", path.display()))
 }
 
 /// Top-level structure of `environments.yaml`.
 #[derive(Debug, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
     #[serde(default)]
     pub environments: HashMap<String, Environment>,
@@ -62,6 +87,7 @@ pub struct Config {
 
 /// A named environment preset: volumes to mount and env vars to inject.
 #[derive(Debug, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct Environment {
     /// `host_path:container_path` pairs, same format as `docker --volume`.
     #[serde(default)]
@@ -95,12 +121,18 @@ fn orka_config_dir() -> PathBuf {
 pub fn load(path: &Path) -> Result<Config, String> {
     let content =
         fs::read_to_string(path).map_err(|e| format!("failed to read {}: {e}", path.display()))?;
-    serde_yml::from_str(&content).map_err(|e| format!("failed to parse {}: {e}", path.display()))
+    parse(&content, path)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Parse via the production entry point so tests cover the behaviour orka
+    /// actually has, not the raw YAML crate's.
+    fn try_parse<T: serde::de::DeserializeOwned + Default + 'static>(yaml: &str) -> Result<T, String> {
+        parse(yaml, Path::new("<test>"))
+    }
 
     #[test]
     fn parse_full_config() {
@@ -118,7 +150,7 @@ environments:
   empty:
     volumes: []
 "#;
-        let cfg: Config = serde_yml::from_str(yaml).unwrap();
+        let cfg: Config = try_parse(yaml).unwrap();
         assert!(cfg.environments.contains_key("rust"));
         assert!(cfg.environments.contains_key("go"));
         assert!(cfg.environments.contains_key("empty"));
@@ -132,26 +164,34 @@ environments:
         assert_eq!(go.env.len(), 1);
     }
 
+    /// `env` is optional; most presets in the shipped template omit it.
     #[test]
     fn parse_missing_optional_fields() {
-        // `volumes` and `env` both default to empty vec when absent.
-        let yaml = "environments:\n  bare:\n";
-        let cfg: Config = serde_yml::from_str(yaml).unwrap();
+        let yaml = "environments:\n  bare:\n    volumes:\n      - /a:/a\n";
+        let cfg: Config = try_parse(yaml).unwrap();
         let bare = &cfg.environments["bare"];
-        assert!(bare.volumes.is_empty());
+        assert_eq!(bare.volumes.len(), 1);
         assert!(bare.env.is_empty());
+    }
+
+    /// An environment key with no body is a truncated edit, not an empty
+    /// preset, and is rejected rather than silently treated as defaults.
+    #[test]
+    fn null_bodied_environment_is_rejected() {
+        let err = try_parse::<Config>("environments:\n  bare:\n").unwrap_err();
+        assert!(err.contains("failed to parse"), "got: {err}");
     }
 
     #[test]
     fn parse_empty_document() {
-        let cfg: Config = serde_yml::from_str("").unwrap();
+        let cfg: Config = try_parse("").unwrap();
         assert!(cfg.environments.is_empty());
     }
 
     #[test]
     fn parse_defaults_full() {
         let yaml = "engine: podman\nharness: claude\nharness-version: 1.2.3\n";
-        let d: Defaults = serde_yml::from_str(yaml).unwrap();
+        let d: Defaults = try_parse(yaml).unwrap();
         assert_eq!(d.engine, Some(Backend::Podman));
         assert_eq!(d.harness, Some(Harness::Claude));
         assert_eq!(d.harness_version.as_deref(), Some("1.2.3"));
@@ -160,7 +200,7 @@ environments:
     #[test]
     fn parse_defaults_partial() {
         let yaml = "engine: podman\n";
-        let d: Defaults = serde_yml::from_str(yaml).unwrap();
+        let d: Defaults = try_parse(yaml).unwrap();
         assert_eq!(d.engine, Some(Backend::Podman));
         assert!(d.harness.is_none());
         assert!(d.harness_version.is_none());
@@ -169,16 +209,76 @@ environments:
     #[test]
     fn parse_defaults_bubblewrap() {
         let yaml = "engine: bubblewrap\n";
-        let d: Defaults = serde_yml::from_str(yaml).unwrap();
+        let d: Defaults = try_parse(yaml).unwrap();
         assert_eq!(d.engine, Some(Backend::Bubblewrap));
     }
 
     #[test]
     fn parse_defaults_empty_document() {
-        let d: Defaults = serde_yml::from_str("").unwrap();
+        let d: Defaults = try_parse("").unwrap();
         assert!(d.engine.is_none());
         assert!(d.harness.is_none());
         assert!(d.harness_version.is_none());
+    }
+
+    /// The shipped template is entirely comments.  Copying it into place must
+    /// yield defaults, not a parse error that stops orka from starting.
+    #[test]
+    fn shipped_template_parses_to_defaults() {
+        const TEMPLATE: &str = include_str!("../config/config.yaml");
+        assert!(
+            TEMPLATE
+                .lines()
+                .all(|l| l.trim().is_empty() || l.trim_start().starts_with('#')),
+            "template is expected to be comments only; update this test if it gains values"
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.yaml");
+        std::fs::write(&path, TEMPLATE).unwrap();
+        let d = load_defaults(&path).unwrap();
+        assert!(d.engine.is_none());
+        assert!(d.harness.is_none());
+        assert!(d.harness_version.is_none());
+        assert!(d.pi_path.is_none());
+    }
+
+    /// Every key the README and template document must actually bind.  These
+    /// are kebab-case; snake_case field names alone silently dropped four of
+    /// them.
+    #[test]
+    fn all_documented_kebab_keys_bind() {
+        let yaml = concat!(
+            "engine: bubblewrap\n",
+            "harness: codex\n",
+            "harness-version: 1.2.3\n",
+            "pi-path: /opt/pi/bin/pi\n",
+            "claude-path: /opt/claude/bin/claude\n",
+            "codex-path: /opt/codex/bin/codex\n",
+        );
+        let d: Defaults = try_parse(yaml).unwrap();
+        assert_eq!(d.engine, Some(Backend::Bubblewrap));
+        assert_eq!(d.harness, Some(Harness::Codex));
+        assert_eq!(d.harness_version.as_deref(), Some("1.2.3"));
+        assert_eq!(d.pi_path.as_deref(), Some("/opt/pi/bin/pi"));
+        assert_eq!(d.claude_path.as_deref(), Some("/opt/claude/bin/claude"));
+        assert_eq!(d.codex_path.as_deref(), Some("/opt/codex/bin/codex"));
+    }
+
+    /// snake_case is not the documented format and must not silently work.
+    #[test]
+    fn snake_case_key_is_rejected() {
+        let err = try_parse::<Defaults>("harness_version: 1.2.3\n").unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("harness_version") || msg.contains("unknown"),
+            "expected an unknown-key error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn typo_in_key_is_rejected_not_ignored() {
+        assert!(try_parse::<Defaults>("engin: podman\n").is_err());
     }
 
     #[test]

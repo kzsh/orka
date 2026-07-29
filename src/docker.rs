@@ -784,6 +784,29 @@ mod tests {
         assert!(!cmd.contains(&"--userns=keep-id".to_string()));
     }
 
+    /// Building a run command for `harness` under `backend`, with the
+    /// per-harness home directories pre-created so the builders succeed.
+    fn run_args_for(harness: Harness, backend: Backend) -> Vec<String> {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+        for sub in [".pi", ".claude", ".codex"] {
+            std::fs::create_dir_all(format!("{home}/{sub}")).unwrap();
+        }
+
+        let mut cfg = make_cfg(harness);
+        cfg.backend = backend;
+        cfg.engine_binary = match backend {
+            Backend::Docker => "docker".to_string(),
+            _ => "podman".to_string(),
+        };
+
+        match harness {
+            Harness::Pi => run_pi_command_args("orka:latest", 1000, 1000, &cfg),
+            Harness::Claude => run_claude_command_args("orka-claude:latest", 1000, 1000, &cfg),
+            Harness::Codex => run_codex_command_args("orka-codex:latest", 1000, 1000, &cfg),
+        }
+        .unwrap()
+    }
+
     /// Podman resolves a numeric `--user` back to a username, which fails for
     /// LDAP/sssd accounts missing from /etc/passwd.  `--userns=keep-id`
     /// already pins the container UID to the host UID, so `--user` must be
@@ -814,6 +837,24 @@ mod tests {
             assert_eq!(cmd[idx + 1], "1000:1000");
             assert!(!cmd.contains(&"--userns=keep-id".to_string()));
         }
+    }
+
+    /// The image reference must remain the final token before any trailing
+    /// container arguments; reordering the flag block must not disturb it.
+    #[test]
+    fn image_ref_precedes_container_args() {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+        std::fs::create_dir_all(format!("{home}/.pi")).unwrap();
+
+        let mut cfg = make_cfg(Harness::Pi);
+        cfg.backend = Backend::Podman;
+        cfg.engine_binary = "podman".to_string();
+        cfg.container_args = vec!["--help".to_string()];
+
+        let cmd = run_pi_command_args("orka:latest", 1000, 1000, &cfg).unwrap();
+        let img = cmd.iter().position(|a| a == "orka:latest").unwrap();
+        assert_eq!(cmd[img + 1], "--help");
+        assert_eq!(cmd[img - 1], cfg.workdir);
     }
 
     #[test]

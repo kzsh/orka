@@ -5,25 +5,7 @@
 //! lightweight mount namespace that gives the agent a restricted view of the
 //! filesystem while keeping network access and the current user's identity.
 //!
-//! Sandbox filesystem layout:
-//!
-//!   /
-//!   ├── usr/           ro-bind  (system binaries + libraries)
-//!   ├── lib*/          ro-bind-try
-//!   ├── bin/, sbin/    ro-bind-try
-//!   ├── opt/           ro-bind-try  (common agent install prefix)
-//!   ├── proc/          proc
-//!   ├── dev/           dev
-//!   ├── tmp/           tmpfs
-//!   ├── run/           tmpfs
-//!   ├── etc/
-//!   │   ├── resolv.conf, hosts, ssl, ...  ro-bind-try
-//!   └── home/<user>/
-//!       ├── .pi/             bind rw  (pi config)
-//!       ├── .claude/         bind rw  (claude config dir)
-//!       ├── .claude.json     bind rw  (claude preferences)
-//!       ├── .codex/          bind rw  (codex config)
-//!       └── <workdir>        bind rw  (user project)
+//! `build_command` is the authoritative description of the sandbox layout.
 
 use std::fs;
 use std::process::{Command, ExitStatus};
@@ -132,16 +114,14 @@ fn build_command(cfg: &RunConfig) -> Result<Vec<String>, String> {
         setenv(&mut cmd, key, &std::env::var(key).unwrap_or_default());
     }
 
-    // Resolve the agent binary.  If its parent directory is not already
-    // covered by a pre-mounted path (e.g. /usr, /opt), add an explicit
-    // read-only bind mount for it.
+    // Resolve the agent binary and bind every directory it needs to exec:
+    // the launcher itself, the script it points at, and that script's
+    // dependency tree.  Paths already covered by /usr, /opt, etc. are skipped.
     let binary = resolve_binary(cfg)?;
-    let binary_dir = std::path::Path::new(&binary)
-        .parent()
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|| binary.clone());
-    if !binary_dir.is_empty() && !is_path_covered(&binary_dir) {
-        ro_bind_try(&mut cmd, &binary_dir);
+    for path in binary_mount_paths(&binary) {
+        if !is_path_covered(&path) {
+            ro_bind(&mut cmd, &path);
+        }
     }
 
     // Agent binary then forwarded arguments.
@@ -225,6 +205,106 @@ fn find_in_path(name: &str) -> Option<String> {
         .map(|dir| dir.join(name))
         .find(|p| p.is_file())
         .map(|p| p.to_string_lossy().into_owned())
+}
+
+/// Directories that must be visible inside the sandbox for `binary` to exec.
+///
+/// A launcher found on PATH is rarely a self-contained executable.  npm, bun
+/// and mise all install `<prefix>/bin/<cmd>` as a *relative symlink* into
+/// `<prefix>/lib/node_modules/<pkg>/<entry>.js`, and that script needs its
+/// sibling dependency tree at runtime.  Binding only the launcher's own
+/// directory leaves the symlink dangling inside the sandbox, so execvp
+/// reports ENOENT for a path that plainly exists on the host.  Given
+/// `PREFIX/bin/pi` symlinked to `../lib/node_modules/@scope/pkg/dist/index.js`,
+/// both `PREFIX/bin` (the launcher) and `PREFIX/lib` (the package tree, which
+/// covers the entry script and its dependencies) have to be bound.
+///
+/// The shebang interpreter is bound too, since a missing interpreter produces
+/// the identical ENOENT.  Result is deduplicated with subsumed paths removed.
+fn binary_mount_paths(binary: &str) -> Vec<String> {
+    let mut paths: Vec<String> = Vec::new();
+
+    if let Some(dir) = parent_dir(binary) {
+        paths.push(dir);
+    }
+
+    if let Ok(target) = fs::canonicalize(binary) {
+        let target = target.to_string_lossy().into_owned();
+
+        match node_package_root(&target) {
+            Some(root) => paths.push(root),
+            None => {
+                if let Some(dir) = parent_dir(&target) {
+                    paths.push(dir);
+                }
+            }
+        }
+
+        if let Some(dir) = shebang_interpreter(&target).as_deref().and_then(parent_dir) {
+            paths.push(dir);
+        }
+    }
+
+    normalize_mount_paths(paths)
+}
+
+fn parent_dir(path: &str) -> Option<String> {
+    std::path::Path::new(path)
+        .parent()
+        .map(|p| p.to_string_lossy().into_owned())
+        .filter(|p| !p.is_empty())
+}
+
+/// For a path inside an installed npm package, the directory holding the
+/// outermost `node_modules`.  Binding it exposes the entry script together
+/// with every dependency it can require.
+fn node_package_root(path: &str) -> Option<String> {
+    let idx = path.find("/node_modules/")?;
+    let root = &path[..idx];
+    (!root.is_empty()).then(|| root.to_string())
+}
+
+/// The interpreter from a `#!` line, if `path` is a script.
+fn shebang_interpreter(path: &str) -> Option<String> {
+    use std::io::Read;
+
+    let mut head = [0u8; 256];
+    let read = fs::File::open(path).ok()?.read(&mut head).ok()?;
+    let head = head.get(..read)?;
+    if !head.starts_with(b"#!") {
+        return None;
+    }
+
+    let line = match head.iter().position(|&b| b == b'\n') {
+        Some(end) => &head[2..end],
+        None => &head[2..],
+    };
+    String::from_utf8_lossy(line)
+        .split_whitespace()
+        .next()
+        .map(str::to_string)
+}
+
+/// Keep only existing directories, in a stable order, dropping duplicates and
+/// any path already contained in another entry.
+fn normalize_mount_paths(mut paths: Vec<String>) -> Vec<String> {
+    paths.retain(|p| p != "/" && std::path::Path::new(p).is_dir());
+    paths.sort();
+    paths.dedup();
+
+    // Sorted ascending, an ancestor always precedes its descendants.
+    let mut kept: Vec<String> = Vec::new();
+    for path in paths {
+        if !kept.iter().any(|k| is_under(&path, k)) {
+            kept.push(path);
+        }
+    }
+    kept
+}
+
+fn is_under(path: &str, ancestor: &str) -> bool {
+    path.strip_prefix(ancestor)
+        .is_some_and(|rest| rest.starts_with('/'))
 }
 
 /// Returns true when `path` is under a directory that is already bind-mounted
@@ -515,7 +595,7 @@ mod tests {
     #[test]
     fn uncovered_binary_gets_extra_ro_bind() {
         // Binary is in a temp dir (not under /usr, /opt, etc.).
-        // build_command should emit an --ro-bind-try for that directory.
+        // build_command should emit an --ro-bind for that directory.
         let (cfg, _dir) = make_cfg(Harness::Pi);
         let binary = cfg.harness_binary.as_ref().unwrap().clone();
         let binary_dir = std::path::Path::new(&binary)
@@ -525,12 +605,183 @@ mod tests {
             .into_owned();
         assert!(!is_path_covered(&binary_dir));
         let cmd = build_command(&cfg).unwrap();
-        let found = cmd
-            .windows(3)
-            .any(|w| w[0] == "--ro-bind-try" && w[1] == binary_dir && w[2] == binary_dir);
         assert!(
-            found,
-            "binary dir should get --ro-bind-try when not already covered"
+            has_bind(&cmd, "--ro-bind", &binary_dir),
+            "binary dir should get --ro-bind when not already covered"
         );
+    }
+
+    fn has_bind(cmd: &[String], flag: &str, path: &str) -> bool {
+        cmd.windows(3)
+            .any(|w| w[0] == flag && w[1] == path && w[2] == path)
+    }
+
+    /// Reproduces the npm/mise global install layout:
+    ///
+    ///   <prefix>/bin/pi -> ../lib/node_modules/@scope/pkg/dist/index.js
+    ///   <prefix>/lib/node_modules/@scope/pkg/node_modules/dep/...
+    ///
+    /// Returns (tempdir, prefix, launcher path).
+    fn npm_style_install(shebang: &str) -> (tempfile::TempDir, String, String) {
+        let dir = tempfile::tempdir().unwrap();
+        let prefix = dir.path().join("node/24.11.1");
+        let bin = prefix.join("bin");
+        let pkg = prefix.join("lib/node_modules/@earendil-works/pi-coding-agent");
+        let dist = pkg.join("dist");
+        fs::create_dir_all(&bin).unwrap();
+        fs::create_dir_all(&dist).unwrap();
+        fs::create_dir_all(pkg.join("node_modules/some-dep")).unwrap();
+
+        fs::write(dist.join("index.js"), format!("{shebang}\nconsole.log(1);\n")).unwrap();
+
+        let launcher = bin.join("pi");
+        std::os::unix::fs::symlink(
+            "../lib/node_modules/@earendil-works/pi-coding-agent/dist/index.js",
+            &launcher,
+        )
+        .unwrap();
+
+        let prefix = prefix.to_string_lossy().into_owned();
+        let launcher = launcher.to_string_lossy().into_owned();
+        (dir, prefix, launcher)
+    }
+
+    /// The regression: binding only the launcher directory leaves the relative
+    /// symlink dangling in the sandbox and execvp fails with ENOENT.  The
+    /// package tree root must be bound as well.
+    #[test]
+    fn npm_symlink_launcher_binds_package_tree_root() {
+        let (_tmp, prefix, launcher) = npm_style_install("#!/usr/bin/env node");
+        let paths = binary_mount_paths(&launcher);
+
+        assert!(
+            paths.contains(&format!("{prefix}/bin")),
+            "launcher dir must be bound: {paths:?}"
+        );
+        assert!(
+            paths.contains(&format!("{prefix}/lib")),
+            "package tree root must be bound so the symlink target and its \
+             dependencies resolve: {paths:?}"
+        );
+    }
+
+    /// The whole point of binding the package root: the symlink must resolve
+    /// to a real file through one of the returned mounts.
+    #[test]
+    fn npm_symlink_target_lies_under_a_returned_mount() {
+        let (_tmp, _prefix, launcher) = npm_style_install("#!/usr/bin/env node");
+        let target = fs::canonicalize(&launcher).unwrap();
+        let target = target.to_string_lossy().into_owned();
+        let paths = binary_mount_paths(&launcher);
+        assert!(
+            paths.iter().any(|p| is_under(&target, p)),
+            "symlink target {target} is not covered by any mount: {paths:?}"
+        );
+    }
+
+    /// Dependencies sit in a nested node_modules; the outermost one defines the
+    /// root, so nested trees stay covered by a single mount.
+    #[test]
+    fn nested_node_modules_resolve_to_outermost_root() {
+        assert_eq!(
+            node_package_root("/p/lib/node_modules/@s/pkg/node_modules/dep/i.js"),
+            Some("/p/lib".to_string())
+        );
+    }
+
+    #[test]
+    fn node_package_root_is_none_outside_node_modules() {
+        assert_eq!(node_package_root("/opt/pi-bun/bin/pi"), None);
+    }
+
+    /// A launcher installed under $HOME must still exec: build_command has to
+    /// emit binds for both the bin dir and the package tree.
+    #[test]
+    fn build_command_binds_package_tree_for_home_install() {
+        let (_tmp, prefix, launcher) = npm_style_install("#!/usr/bin/env node");
+        let (mut cfg, _dir) = make_cfg(Harness::Pi);
+        cfg.harness_binary = Some(launcher.clone());
+
+        let cmd = build_command(&cfg).unwrap();
+        assert!(has_bind(&cmd, "--ro-bind", &format!("{prefix}/bin")));
+        assert!(has_bind(&cmd, "--ro-bind", &format!("{prefix}/lib")));
+        assert_eq!(cmd.last().unwrap(), &launcher);
+    }
+
+    /// An absolute shebang interpreter outside the install prefix must be
+    /// bound, otherwise exec fails with the same ENOENT.
+    #[test]
+    fn absolute_shebang_interpreter_dir_is_bound() {
+        let node_dir = tempfile::tempdir().unwrap();
+        let node = node_dir.path().join("node");
+        fs::write(&node, "").unwrap();
+        let shebang = format!("#!{}", node.to_string_lossy());
+
+        let (_tmp, _prefix, launcher) = npm_style_install(&shebang);
+        let paths = binary_mount_paths(&launcher);
+        let expected = node_dir.path().to_string_lossy().into_owned();
+        assert!(
+            paths.contains(&expected),
+            "interpreter dir {expected} must be bound: {paths:?}"
+        );
+    }
+
+    #[test]
+    fn env_shebang_needs_no_extra_mount() {
+        assert_eq!(
+            shebang_interpreter_of("#!/usr/bin/env node"),
+            Some("/usr/bin/env".to_string())
+        );
+        assert!(is_path_covered("/usr/bin"));
+    }
+
+    #[test]
+    fn shebang_with_arguments_takes_only_the_interpreter() {
+        assert_eq!(
+            shebang_interpreter_of("#!/usr/bin/node --experimental-vm-modules"),
+            Some("/usr/bin/node".to_string())
+        );
+    }
+
+    #[test]
+    fn binary_without_shebang_yields_no_interpreter() {
+        assert_eq!(shebang_interpreter_of("\x7fELF\x02\x01\x01"), None);
+    }
+
+    fn shebang_interpreter_of(contents: &str) -> Option<String> {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("prog");
+        fs::write(&file, contents).unwrap();
+        shebang_interpreter(&file.to_string_lossy())
+    }
+
+    #[test]
+    fn normalize_drops_paths_subsumed_by_an_ancestor() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_string_lossy().into_owned();
+        fs::create_dir_all(dir.path().join("a/b")).unwrap();
+
+        let got = normalize_mount_paths(vec![
+            format!("{root}/a/b"),
+            root.clone(),
+            format!("{root}/a"),
+            root.clone(),
+        ]);
+        assert_eq!(got, vec![root]);
+    }
+
+    #[test]
+    fn normalize_drops_nonexistent_and_root() {
+        assert_eq!(
+            normalize_mount_paths(vec![s("/"), s("/definitely/not/here")]),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn is_under_requires_a_path_boundary() {
+        assert!(is_under("/a/b", "/a"));
+        assert!(!is_under("/ab", "/a"));
+        assert!(!is_under("/a", "/a"));
     }
 }

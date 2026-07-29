@@ -18,7 +18,7 @@ opt-level = "z"
 clap = { version = "4", features = ["derive"] }
 ignore = "0.4"
 libc = "0.2"
+noyalib = "0.0.17"
 serde = { version = "1", features = ["derive"] }
-serde_yml = "0.0"
 tempfile = "3"
 walkdir = "2"
