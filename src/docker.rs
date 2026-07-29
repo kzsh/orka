@@ -11,7 +11,6 @@ use crate::cli::{Backend, Harness};
 // contains Cargo.toml and the Dockerfiles).
 const DOCKERFILE: &str = include_str!("../Dockerfile");
 const DOCKERFILE_BASE: &str = include_str!("../Dockerfile.base");
-const DOCKERFILE_BROWSER_BASE: &str = include_str!("../Dockerfile.browser-base");
 const DOCKERFILE_CLAUDE: &str = include_str!("../Dockerfile.claude");
 const DOCKERFILE_CODEX: &str = include_str!("../Dockerfile.codex");
 const ENTRYPOINT_SH: &str = include_str!("../entrypoint.sh");
@@ -19,7 +18,6 @@ const ENTRYPOINT_CLAUDE_SH: &str = include_str!("../entrypoint.claude.sh");
 const ENTRYPOINT_CODEX_SH: &str = include_str!("../entrypoint.codex.sh");
 
 const BASE_CONTAINER_NAME: &str = "orka-base";
-const BROWSER_BASE_CONTAINER_NAME: &str = "orka-browser-base";
 const PI_CONTAINER_NAME: &str = "orka";
 const CLAUDE_CONTAINER_NAME: &str = "orka-claude";
 const CODEX_CONTAINER_NAME: &str = "orka-codex";
@@ -34,12 +32,8 @@ pub struct RunConfig {
     pub dry_run: bool,
     pub verbose: bool,
     pub quiet: bool,
-    pub no_custom_dockerfile: bool,
     pub preserve_container: bool,
     pub harness_version: Option<String>,
-    /// When true, skips passing `INSTALL_AGENT_BROWSER=true` to the pi image build.
-    /// Ignored for the claude harness.
-    pub no_browser: bool,
     /// Resolved `(host_path, container_path)` volume pairs.
     pub volumes: Vec<(String, String)>,
     /// Read-only shadow volumes: each is mounted `:ro` over a sensitive path
@@ -57,9 +51,9 @@ pub struct RunConfig {
 /// Write all embedded Dockerfiles and entrypoints into a fresh temp directory
 /// and return it.  The directory is used as the Docker build context.
 ///
-/// When `~/.config/orka/Dockerfile.base` exists and `cfg.no_custom_dockerfile`
-/// is false, that file is used in place of the embedded base.
-fn write_build_context(cfg: &RunConfig) -> Result<TempDir, String> {
+/// When `~/.config/orka/Dockerfile.base` exists it is used in place of the
+/// embedded base.
+fn write_build_context() -> Result<TempDir, String> {
     let dir =
         tempfile::tempdir().map_err(|e| format!("failed to create temp build context: {e}"))?;
 
@@ -67,7 +61,7 @@ fn write_build_context(cfg: &RunConfig) -> Result<TempDir, String> {
         .map_err(|e| format!("failed to write Dockerfile to build context: {e}"))?;
 
     let custom_base_path = crate::config::custom_dockerfile_base_path();
-    let dockerfile_base_content = if !cfg.no_custom_dockerfile && custom_base_path.is_file() {
+    let dockerfile_base_content = if custom_base_path.is_file() {
         fs::read_to_string(&custom_base_path)
             .map_err(|e| format!("failed to read {}: {e}", custom_base_path.display()))?
     } else {
@@ -75,12 +69,6 @@ fn write_build_context(cfg: &RunConfig) -> Result<TempDir, String> {
     };
     fs::write(dir.path().join("Dockerfile.base"), dockerfile_base_content)
         .map_err(|e| format!("failed to write Dockerfile.base to build context: {e}"))?;
-
-    fs::write(
-        dir.path().join("Dockerfile.browser-base"),
-        DOCKERFILE_BROWSER_BASE,
-    )
-    .map_err(|e| format!("failed to write Dockerfile.browser-base to build context: {e}"))?;
 
     fs::write(dir.path().join("Dockerfile.claude"), DOCKERFILE_CLAUDE)
         .map_err(|e| format!("failed to write Dockerfile.claude to build context: {e}"))?;
@@ -111,14 +99,13 @@ fn write_build_context(cfg: &RunConfig) -> Result<TempDir, String> {
 
 /// Build both Docker images and, once they are ready, run the container.
 pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
-    let ctx = write_build_context(cfg)?;
+    let ctx = write_build_context()?;
     let ctx_path = ctx
         .path()
         .to_str()
         .ok_or_else(|| "temp build context path contains non-UTF-8 characters".to_string())?;
 
     let base_ref = format!("{BASE_CONTAINER_NAME}:latest");
-    let browser_base_ref = format!("{BROWSER_BASE_CONTAINER_NAME}:latest");
     let uid = current_uid();
     let gid = current_gid();
     let uname = std::env::var("USER")
@@ -127,34 +114,11 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
 
     let base_build = build_base_command(&base_ref, ctx_path, cfg);
 
-    // For pi with browser enabled, build the intermediate browser-base layer
-    // before the main image.  This layer installs agent-browser and downloads
-    // Chromium; it is not rebuilt with --no-cache so it stays cached across
-    // pi version upgrades.
-    let browser_base_build = if matches!(cfg.harness, Harness::Pi) && !cfg.no_browser {
-        Some(build_browser_base_command(
-            &browser_base_ref,
-            &base_ref,
-            ctx_path,
-            cfg,
-        ))
-    } else {
-        None
-    };
-
-    // The pi main image builds FROM browser-base when browser support is
-    // enabled, FROM the plain apt-base otherwise.
-    let pi_base_ref = if cfg.no_browser {
-        base_ref.clone()
-    } else {
-        browser_base_ref.clone()
-    };
-
     let (main_build, run_cmd) = match cfg.harness {
         Harness::Pi => {
             let tag = cfg.harness_version.as_deref().unwrap_or("latest");
             let main_ref = format!("{PI_CONTAINER_NAME}:{tag}");
-            let b = build_pi_main_command(&main_ref, &pi_base_ref, &uname, uid, gid, ctx_path, cfg);
+            let b = build_pi_main_command(&main_ref, &base_ref, &uname, uid, gid, ctx_path, cfg);
             let r = run_pi_command_args(&main_ref, uid, gid, cfg)?;
             (b, r)
         }
@@ -175,9 +139,6 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
 
     if cfg.dry_run {
         print_dry_run("base image build", &base_build);
-        if let Some(ref bbb) = browser_base_build {
-            print_dry_run("browser-base image build", bbb);
-        }
         print_dry_run("main image build", &main_build);
         print_dry_run("container run", &run_cmd);
         return Ok(());
@@ -195,9 +156,6 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
     }
 
     exec(&base_build)?;
-    if let Some(ref bbb) = browser_base_build {
-        exec(bbb)?;
-    }
     exec(&main_build)?;
     exec(&run_cmd)?;
 
@@ -216,36 +174,6 @@ fn build_base_command(base_ref: &str, ctx_path: &str, cfg: &RunConfig) -> Vec<St
         s(base_ref),
         s("--file"),
         format!("{ctx_path}/Dockerfile.base"),
-    ];
-    if cfg.quiet {
-        cmd.push(s("--quiet"));
-    }
-    cmd.push(s(ctx_path));
-    cmd
-}
-
-// ---------------------------------------------------------------------------
-// Command builders — browser-base (pi only)
-// ---------------------------------------------------------------------------
-
-/// Builds the intermediate orka-browser-base image that contains agent-browser
-/// and its Chromium download.  Like the apt base, this is never rebuilt with
-/// --no-cache so it stays warm across pi version upgrades.
-fn build_browser_base_command(
-    browser_base_ref: &str,
-    base_ref: &str,
-    ctx_path: &str,
-    cfg: &RunConfig,
-) -> Vec<String> {
-    let mut cmd = vec![
-        cfg.engine_binary.clone(),
-        s("build"),
-        s("--tag"),
-        s(browser_base_ref),
-        s("--file"),
-        format!("{ctx_path}/Dockerfile.browser-base"),
-        s("--build-arg"),
-        format!("BASE_IMAGE={base_ref}"),
     ];
     if cfg.quiet {
         cmd.push(s("--quiet"));
@@ -305,12 +233,6 @@ fn run_pi_command_args(
     let pi_dir = format!("{home}/.pi");
     fs::create_dir_all(&pi_dir).map_err(|e| format!("failed to create {pi_dir}: {e}"))?;
 
-    let agent_browser_dir = format!("{home}/.agent-browser");
-    if !cfg.no_browser {
-        fs::create_dir_all(&agent_browser_dir)
-            .map_err(|e| format!("failed to create {agent_browser_dir}: {e}"))?;
-    }
-
     let mut cmd = vec![
         cfg.engine_binary.clone(),
         s("run"),
@@ -331,13 +253,6 @@ fn run_pi_command_args(
     // Pi config/data dir is always mounted so settings persist across runs.
     cmd.push(s("--volume"));
     cmd.push(format!("{pi_dir}:{pi_dir}"));
-
-    // When the browser extension is included, mount its data dir so screenshots
-    // and other browser output are accessible on the host.
-    if !cfg.no_browser {
-        cmd.push(s("--volume"));
-        cmd.push(format!("{agent_browser_dir}:{agent_browser_dir}"));
-    }
 
     for (host, container) in &cfg.volumes {
         cmd.push(s("--volume"));
@@ -708,10 +623,8 @@ mod tests {
             dry_run: false,
             verbose: false,
             quiet: false,
-            no_custom_dockerfile: true,
             preserve_container: false,
             harness_version: None,
-            no_browser: false,
             volumes: vec![],
             shadow_volumes: vec![],
             env_vars: vec![],
@@ -776,81 +689,6 @@ mod tests {
     }
 
     #[test]
-    fn pi_build_uses_browser_base_by_default() {
-        // When browser support is enabled (the default), the main pi image
-        // should build FROM orka-browser-base, not orka-base.
-        let cfg = make_cfg(Harness::Pi);
-        let cmd = build_pi_main_command(
-            "orka:latest",
-            "orka-browser-base:latest",
-            "user",
-            1000,
-            1000,
-            "/ctx",
-            &cfg,
-        );
-        let joined = cmd.join(" ");
-        assert!(joined.contains("BASE_IMAGE=orka-browser-base:latest"));
-        assert!(!joined.contains("INSTALL_AGENT_BROWSER"));
-    }
-
-    #[test]
-    fn pi_build_uses_plain_base_when_no_browser() {
-        let mut cfg = make_cfg(Harness::Pi);
-        cfg.no_browser = true;
-        let cmd = build_pi_main_command(
-            "orka:latest",
-            "orka-base:latest",
-            "user",
-            1000,
-            1000,
-            "/ctx",
-            &cfg,
-        );
-        let joined = cmd.join(" ");
-        assert!(joined.contains("BASE_IMAGE=orka-base:latest"));
-        assert!(!joined.contains("orka-browser-base"));
-        assert!(!joined.contains("INSTALL_AGENT_BROWSER"));
-    }
-
-    #[test]
-    fn browser_base_build_command_is_correct() {
-        let cfg = make_cfg(Harness::Pi);
-        let cmd = build_browser_base_command(
-            "orka-browser-base:latest",
-            "orka-base:latest",
-            "/ctx",
-            &cfg,
-        );
-        assert_eq!(cmd[0], "docker");
-        assert_eq!(cmd[1], "build");
-        assert!(cmd.contains(&"orka-browser-base:latest".to_string()));
-        let file_idx = cmd.iter().position(|a| a == "--file").unwrap();
-        assert!(cmd[file_idx + 1].ends_with("Dockerfile.browser-base"));
-        let joined = cmd.join(" ");
-        assert!(joined.contains("BASE_IMAGE=orka-base:latest"));
-        // browser-base is never rebuilt with --no-cache
-        assert!(!joined.contains("--no-cache"));
-    }
-
-    #[test]
-    fn claude_build_never_passes_browser_arg() {
-        let cfg = make_cfg(Harness::Claude);
-        let cmd = build_claude_main_command(
-            "orka-claude:latest",
-            "orka-base:latest",
-            "user",
-            1000,
-            1000,
-            "/ctx",
-            &cfg,
-        );
-        let joined = cmd.join(" ");
-        assert!(!joined.contains("INSTALL_AGENT_BROWSER"));
-        assert!(!joined.contains("browser-base"));
-    }
-
-    #[test]
     fn podman_run_adds_userns_keep_id() {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
         let pi_dir = format!("{home}/.pi");
@@ -859,7 +697,6 @@ mod tests {
         let mut cfg = make_cfg(Harness::Pi);
         cfg.engine_binary = "podman".to_string();
         cfg.backend = Backend::Podman;
-        cfg.no_browser = true;
         let cmd = run_pi_command_args("orka:latest", 1000, 1000, &cfg).unwrap();
         assert!(cmd.contains(&"--userns=keep-id".to_string()));
     }
@@ -873,7 +710,6 @@ mod tests {
         let mut cfg = make_cfg(Harness::Pi);
         cfg.engine_binary = "nerdctl".to_string();
         cfg.backend = Backend::Nerdctl;
-        cfg.no_browser = true;
         let cmd = run_pi_command_args("orka:latest", 1000, 1000, &cfg).unwrap();
         assert!(cmd.contains(&"--userns=keep-id".to_string()));
     }
@@ -884,8 +720,7 @@ mod tests {
         let pi_dir = format!("{home}/.pi");
         std::fs::create_dir_all(&pi_dir).unwrap();
 
-        let mut cfg = make_cfg(Harness::Pi);
-        cfg.no_browser = true;
+        let cfg = make_cfg(Harness::Pi);
         let cmd = run_pi_command_args("orka:latest", 1000, 1000, &cfg).unwrap();
         assert!(!cmd.contains(&"--userns=keep-id".to_string()));
     }
@@ -898,7 +733,6 @@ mod tests {
         std::fs::create_dir_all(&pi_dir).unwrap();
 
         let mut cfg = make_cfg(Harness::Pi);
-        cfg.no_browser = true;
         cfg.shadow_volumes = vec![("/tmp/empty".to_string(), "/project/.env".to_string())];
         let cmd = run_pi_command_args("orka:latest", 1000, 1000, &cfg).unwrap();
         let joined = cmd.join(" ");

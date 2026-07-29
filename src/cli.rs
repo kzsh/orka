@@ -87,10 +87,6 @@ pub struct Cli {
     #[arg(long)]
     pub quiet: bool,
 
-    /// Ignore ~/.config/orka/Dockerfile.base and use the embedded one instead.
-    #[arg(long)]
-    pub no_custom_dockerfile: bool,
-
     /// Set the LLM agent version to install (default: latest).
     /// Applies to --harness pi only.
     #[arg(long, short = 'v', value_name = "VERSION")]
@@ -99,11 +95,6 @@ pub struct Cli {
     /// Keep the container after it exits instead of removing it automatically.
     #[arg(long)]
     pub preserve_container: bool,
-
-    /// Skip installing the agent-browser extension and Chromium (browser support is on by default).
-    /// Applies to --harness pi only.
-    #[arg(long)]
-    pub no_browser: bool,
 
     /// Create a temporary directory with mktemp -d and use it as the container
     /// workdir. The directory persists after the container exits.

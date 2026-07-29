@@ -20,7 +20,6 @@
 //!   │   ├── resolv.conf, hosts, ssl, ...  ro-bind-try
 //!   └── home/<user>/
 //!       ├── .pi/             bind rw  (pi config)
-//!       ├── .agent-browser/  bind rw  (pi + browser)
 //!       ├── .claude/         bind rw  (claude config dir)
 //!       ├── .claude.json     bind rw  (claude preferences)
 //!       ├── .codex/          bind rw  (codex config)
@@ -162,13 +161,6 @@ fn agent_config_paths(cfg: &RunConfig, home: &str) -> Result<Vec<String>, String
             fs::create_dir_all(&pi_dir)
                 .map_err(|e| format!("failed to create {pi_dir}: {e}"))?;
             paths.push(pi_dir);
-
-            if !cfg.no_browser {
-                let browser_dir = format!("{home}/.agent-browser");
-                fs::create_dir_all(&browser_dir)
-                    .map_err(|e| format!("failed to create {browser_dir}: {e}"))?;
-                paths.push(browser_dir);
-            }
         }
         Harness::Claude => {
             let claude_dir = format!("{home}/.claude");
@@ -358,10 +350,8 @@ mod tests {
             verbose: false,
             preserve_container: false,
             harness_version: None,
-            no_browser: true,
             harness_binary: Some(binary.to_string_lossy().into_owned()),
             backend: crate::cli::Backend::Bubblewrap,
-            no_custom_dockerfile: false,
             quiet: false,
             volumes: vec![],
             shadow_volumes: vec![],
@@ -467,38 +457,6 @@ mod tests {
             .windows(3)
             .any(|w| w[0] == "--setenv" && w[1] == "MY_VAR" && w[2] == "hello");
         assert!(found);
-    }
-
-    #[test]
-    fn no_browser_skips_agent_browser_mount() {
-        let (cfg, _dir) = make_cfg(Harness::Pi); // no_browser = true
-        let cmd = build_command(&cfg).unwrap();
-        let joined = cmd.join(" ");
-        assert!(!joined.contains(".agent-browser"));
-    }
-
-    #[test]
-    fn with_browser_includes_agent_browser_mount() {
-        let base = tempfile::tempdir().unwrap();
-        let home = base.path().to_str().unwrap().to_string();
-        let prev = std::env::var("HOME").ok();
-        std::env::set_var("HOME", &home);
-
-        let (mut cfg, _dir) = make_cfg(Harness::Pi);
-        cfg.no_browser = false;
-        let result = build_command(&cfg);
-
-        match prev {
-            Some(v) => std::env::set_var("HOME", v),
-            None => std::env::remove_var("HOME"),
-        }
-
-        let cmd = result.unwrap();
-        let browser_dir = format!("{home}/.agent-browser");
-        let found = cmd
-            .windows(3)
-            .any(|w| w[0] == "--bind" && w[1] == browser_dir && w[2] == browser_dir);
-        assert!(found, ".agent-browser should be mounted when browser is enabled");
     }
 
     #[test]

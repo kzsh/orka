@@ -16,8 +16,6 @@ pub struct Defaults {
     pub harness: Option<Harness>,
     /// Default harness version string passed to `--harness-version`.
     pub harness_version: Option<String>,
-    /// When `true`, skips installing the agent-browser extension by default.
-    pub no_browser: Option<bool>,
     /// Explicit path to the pi binary (bwrap backend only).
     /// When absent, pi is located by searching PATH.
     pub pi_path: Option<String>,
@@ -152,12 +150,11 @@ environments:
 
     #[test]
     fn parse_defaults_full() {
-        let yaml = "engine: podman\nharness: claude\nharness-version: 1.2.3\nno_browser: true\n";
+        let yaml = "engine: podman\nharness: claude\nharness-version: 1.2.3\n";
         let d: Defaults = serde_yml::from_str(yaml).unwrap();
         assert_eq!(d.engine, Some(Backend::Podman));
         assert_eq!(d.harness, Some(Harness::Claude));
         assert_eq!(d.harness_version.as_deref(), Some("1.2.3"));
-        assert_eq!(d.no_browser, Some(true));
     }
 
     #[test]
@@ -167,7 +164,6 @@ environments:
         assert_eq!(d.engine, Some(Backend::Nerdctl));
         assert!(d.harness.is_none());
         assert!(d.harness_version.is_none());
-        assert!(d.no_browser.is_none());
     }
 
     #[test]
@@ -183,7 +179,6 @@ environments:
         assert!(d.engine.is_none());
         assert!(d.harness.is_none());
         assert!(d.harness_version.is_none());
-        assert!(d.no_browser.is_none());
     }
 
     #[test]

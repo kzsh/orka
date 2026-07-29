@@ -184,8 +184,6 @@ fn run() -> Result<(), String> {
     let global_shadow = config::global_shadow_path();
     let (shadow_volumes, _shadow_tmp) = shadow::collect_shadow_volumes(&volumes, &global_shadow)?;
 
-    // no_browser is passed through; tmp/scratchpad are already resolved into
-    // volumes and workdir above.
     let harness_binary = match cli.harness {
         cli::Harness::Pi => defaults.pi_path,
         cli::Harness::Claude => defaults.claude_path,
@@ -201,10 +199,8 @@ fn run() -> Result<(), String> {
         dry_run: cli.dry_run,
         verbose: cli.verbose,
         quiet: cli.quiet,
-        no_custom_dockerfile: cli.no_custom_dockerfile,
         preserve_container: cli.preserve_container,
         harness_version: cli.harness_version,
-        no_browser: cli.no_browser,
         volumes,
         shadow_volumes,
         env_vars,
@@ -370,12 +366,6 @@ fn apply_config_defaults(cli: &mut Cli, matches: &clap::ArgMatches) -> Result<co
     if cli.harness_version.is_none() {
         if let Some(ref v) = defaults.harness_version {
             cli.harness_version = Some(v.clone());
-        }
-    }
-
-    if is_default("no_browser") {
-        if let Some(v) = defaults.no_browser {
-            cli.no_browser = v;
         }
     }
 

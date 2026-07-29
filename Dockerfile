@@ -18,10 +18,9 @@ RUN chown -R "$USER_UID:$USER_GID" /home/$UNAME
 
 # Isolated install root for pi and its bun globals.  Lives outside $HOME so
 # that mounted presets (e.g. bun, uv) can never shadow it.
-# Ensure /opt/pi-bun exists and belongs to the runtime user.  When the base
-# image is orka-browser-base the directory is already populated; chown -R
-# transfers ownership from the build-time bun user to the runtime user.
-# /opt/browser-cache holds the Chromium binary from browser-base; same logic.
+# /opt/browser-cache holds the Chromium binary when agent-browser is present
+# in the base image.  mkdir -p is a no-op if the directory already exists;
+# it also ensures the chown succeeds when a custom base omits agent-browser.
 RUN mkdir -p /opt/pi-bun /opt/browser-cache \
     && chown -R "$USER_UID:$USER_GID" /opt/pi-bun /opt/browser-cache
 
