@@ -2,9 +2,21 @@ use std::env;
 
 /// Expand a leading `~` or `~/` to `$HOME`.
 pub fn expand_tilde(s: &str) -> String {
+    expand_tilde_with(s, &env::var("HOME").unwrap_or_default())
+}
+
+/// Expand all `~` occurrences and `$VAR` / `${VAR}` shell variable references
+/// using the current process environment.  Mirrors the bash `expand_value` helper.
+pub fn expand_value(s: &str) -> String {
     let home = env::var("HOME").unwrap_or_default();
+    expand_value_with(s, &home, &|name| env::var(name).ok())
+}
+
+/// `expand_tilde` with `home` supplied, so the logic is testable without
+/// reading the process environment.
+fn expand_tilde_with(s: &str, home: &str) -> String {
     if s == "~" {
-        home
+        home.to_owned()
     } else if let Some(rest) = s.strip_prefix("~/") {
         format!("{home}/{rest}")
     } else {
@@ -12,15 +24,15 @@ pub fn expand_tilde(s: &str) -> String {
     }
 }
 
-/// Expand all `~` occurrences and `$VAR` / `${VAR}` shell variable references
-/// using the current process environment.  Mirrors the bash `expand_value` helper.
-pub fn expand_value(s: &str) -> String {
-    let home = env::var("HOME").unwrap_or_default();
-    let replaced = s.replace('~', &home);
-    expand_shell_vars(&replaced)
+/// `expand_value` with `home` and the variable lookup supplied, so the logic is
+/// testable without mutating the process environment (a data race under
+/// parallel tests, and `set_var` is unsafe as of edition 2024).
+fn expand_value_with(s: &str, home: &str, lookup: &dyn Fn(&str) -> Option<String>) -> String {
+    let replaced = s.replace('~', home);
+    expand_shell_vars(&replaced, lookup)
 }
 
-fn expand_shell_vars(s: &str) -> String {
+fn expand_shell_vars(s: &str, lookup: &dyn Fn(&str) -> Option<String>) -> String {
     let mut result = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
 
@@ -52,7 +64,7 @@ fn expand_shell_vars(s: &str) -> String {
             }
         }
 
-        if let Ok(val) = env::var(&var_name) {
+        if let Some(val) = lookup(&var_name) {
             result.push_str(&val);
         }
         // Unknown variables expand to empty string, matching bash `eval` behaviour
@@ -66,47 +78,52 @@ fn expand_shell_vars(s: &str) -> String {
 mod tests {
     use super::*;
 
+    /// Build a variable lookup from a fixed set of pairs.
+    fn lookup_from(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
+        let map: std::collections::HashMap<String, String> = pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        move |name: &str| map.get(name).cloned()
+    }
+
     #[test]
     fn tilde_alone() {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
-        assert_eq!(expand_tilde("~"), home);
+        assert_eq!(expand_tilde_with("~", "/home/user"), "/home/user");
     }
 
     #[test]
     fn tilde_prefix() {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
-        assert_eq!(expand_tilde("~/.cargo"), format!("{home}/.cargo"));
+        assert_eq!(expand_tilde_with("~/.cargo", "/home/user"), "/home/user/.cargo");
     }
 
     #[test]
     fn tilde_not_prefix_unchanged() {
-        assert_eq!(expand_tilde("/usr/local/bin"), "/usr/local/bin");
+        assert_eq!(expand_tilde_with("/usr/local/bin", "/home/user"), "/usr/local/bin");
     }
 
     #[test]
     fn expand_dollar_var() {
-        std::env::set_var("_ORKA_TEST_VAR", "hello");
-        assert_eq!(expand_shell_vars("$_ORKA_TEST_VAR/world"), "hello/world");
+        let lookup = lookup_from(&[("_ORKA_TEST_VAR", "hello")]);
+        assert_eq!(expand_shell_vars("$_ORKA_TEST_VAR/world", &lookup), "hello/world");
     }
 
     #[test]
     fn expand_braced_var() {
-        std::env::set_var("_ORKA_TEST_BRACED", "hi");
-        assert_eq!(expand_shell_vars("${_ORKA_TEST_BRACED}/there"), "hi/there");
+        let lookup = lookup_from(&[("_ORKA_TEST_BRACED", "hi")]);
+        assert_eq!(expand_shell_vars("${_ORKA_TEST_BRACED}/there", &lookup), "hi/there");
     }
 
     #[test]
     fn expand_unknown_var_is_empty() {
-        // Remove if set so we get the unset path.
-        std::env::remove_var("_ORKA_DEFINITELY_UNSET");
-        assert_eq!(expand_shell_vars("$_ORKA_DEFINITELY_UNSET"), "");
+        let lookup = lookup_from(&[]);
+        assert_eq!(expand_shell_vars("$_ORKA_DEFINITELY_UNSET", &lookup), "");
     }
 
     #[test]
     fn expand_value_tilde_and_var() {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
-        std::env::set_var("_ORKA_TEST_SUFFIX", "bin");
-        let result = expand_value("~/$_ORKA_TEST_SUFFIX");
-        assert_eq!(result, format!("{home}/bin"));
+        let lookup = lookup_from(&[("_ORKA_TEST_SUFFIX", "bin")]);
+        let result = expand_value_with("~/$_ORKA_TEST_SUFFIX", "/home/user", &lookup);
+        assert_eq!(result, "/home/user/bin");
     }
 }

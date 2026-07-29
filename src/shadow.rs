@@ -182,8 +182,10 @@ mod tests {
             ("main.rs", "fn main() {}"),
         ]);
         let shadows = run(&dir);
-        assert_eq!(shadows.len(), 1);
-        assert!(shadows[0].1.ends_with("/.env"));
+        // The matched file plus the always-shadowed .orkashadow stub.
+        assert_eq!(shadows.len(), 2);
+        assert!(shadows.iter().any(|(_, c)| c.ends_with("/.env")));
+        assert!(shadows.iter().any(|(_, c)| c.ends_with("/.orkashadow")));
     }
 
     #[test]
@@ -195,8 +197,13 @@ mod tests {
             ("readme.md", "docs"),
         ]);
         let shadows = run(&dir);
-        assert_eq!(shadows.len(), 2);
-        assert!(shadows.iter().all(|(_, c)| c.ends_with(".key")));
+        // Two matched files plus the always-shadowed .orkashadow stub.
+        assert_eq!(shadows.len(), 3);
+        assert!(shadows.iter().any(|(_, c)| c.ends_with("/.orkashadow")));
+        assert_eq!(
+            shadows.iter().filter(|(_, c)| c.ends_with(".key")).count(),
+            2
+        );
     }
 
     #[test]
@@ -208,7 +215,9 @@ mod tests {
             ("main.rs", "fn main() {}"),
         ]);
         let shadows = run(&dir);
-        assert_eq!(shadows.len(), 2);
+        // Two matched files plus the always-shadowed .orkashadow stub.
+        assert_eq!(shadows.len(), 3);
+        assert!(shadows.iter().any(|(_, c)| c.ends_with("/.orkashadow")));
     }
 
     #[test]
@@ -220,7 +229,9 @@ mod tests {
             ("main.rs", "fn main() {}"),
         ]);
         let shadows = run(&dir);
-        assert_eq!(shadows.len(), 2);
+        // Two matched files plus the always-shadowed .orkashadow stub.
+        assert_eq!(shadows.len(), 3);
+        assert!(shadows.iter().any(|(_, c)| c.ends_with("/.orkashadow")));
     }
 
     #[test]
@@ -275,10 +286,12 @@ mod tests {
         let host = dir.path().to_str().unwrap().to_string();
         let (shadows, _tmp) =
             collect_shadow_volumes(&[(host.clone(), host)], &global_file).unwrap();
-        assert_eq!(shadows.len(), 2);
+        // Global .env + local *.key match, plus the always-shadowed .orkashadow stub.
+        assert_eq!(shadows.len(), 3);
         let container_paths: Vec<&str> = shadows.iter().map(|(_, c)| c.as_str()).collect();
         assert!(container_paths.iter().any(|p| p.ends_with("/.env")));
         assert!(container_paths.iter().any(|p| p.ends_with("/private.key")));
+        assert!(container_paths.iter().any(|p| p.ends_with("/.orkashadow")));
     }
 
     #[test]
@@ -309,6 +322,9 @@ mod tests {
             ("main.rs", "fn main() {}"),
         ]);
         let shadows = run(&dir);
-        assert_eq!(shadows.len(), 1);
+        // The matched file plus the always-shadowed .orkashadow stub.
+        assert_eq!(shadows.len(), 2);
+        assert!(shadows.iter().any(|(_, c)| c.ends_with("/.env")));
+        assert!(shadows.iter().any(|(_, c)| c.ends_with("/.orkashadow")));
     }
 }

@@ -173,6 +173,13 @@ fn agent_config_paths(cfg: &RunConfig, home: &str) -> Result<Vec<String>, String
 /// the host PATH.  Returns a clear error if the binary cannot be found,
 /// directing the user to install it or set the config option.
 fn resolve_binary(cfg: &RunConfig) -> Result<String, String> {
+    let path_env = std::env::var("PATH").unwrap_or_default();
+    resolve_binary_in(cfg, &path_env)
+}
+
+/// `resolve_binary` with the search path injected, so tests can exercise the
+/// not-found path without mutating the process environment.
+fn resolve_binary_in(cfg: &RunConfig, path_env: &str) -> Result<String, String> {
     let name = match cfg.harness {
         Harness::Pi => "pi",
         Harness::Claude => "claude",
@@ -186,7 +193,7 @@ fn resolve_binary(cfg: &RunConfig) -> Result<String, String> {
         return Err(format!("configured {name}-path does not exist: {path}"));
     }
 
-    find_in_path(name).ok_or_else(|| {
+    search_path(name, path_env).ok_or_else(|| {
         let install_hint = match cfg.harness {
             Harness::Pi => "\n  Install with: bun install -g @earendil-works/pi-coding-agent",
             Harness::Claude | Harness::Codex => "",
@@ -198,10 +205,12 @@ fn resolve_binary(cfg: &RunConfig) -> Result<String, String> {
     })
 }
 
-/// Search the host PATH for a binary by name and return its absolute path.
-fn find_in_path(name: &str) -> Option<String> {
-    let path_env = std::env::var("PATH").unwrap_or_default();
-    std::env::split_paths(&path_env)
+/// Search the supplied `PATH`-style string for `name`, returning its absolute
+/// path.  The search path is passed in rather than read from the environment
+/// so callers (and tests) can inject one without touching the process
+/// environment.
+fn search_path(name: &str, path_env: &str) -> Option<String> {
+    std::env::split_paths(path_env)
         .map(|dir| dir.join(name))
         .find(|p| p.is_file())
         .map(|p| p.to_string_lossy().into_owned())
@@ -561,16 +570,12 @@ mod tests {
         // Use a harness name that is guaranteed not to be in PATH.
         let mut cfg = make_cfg(Harness::Pi).0;
         cfg.harness_binary = None;
-        // Override PATH to an empty directory so nothing is found.
+        // Inject an empty directory as the search path so nothing is found,
+        // without mutating the process-global PATH (a data race under parallel
+        // tests, and unsafe as of edition 2024).
         let empty = tempfile::tempdir().unwrap();
-        let prev = std::env::var("PATH").ok();
-        std::env::set_var("PATH", empty.path());
-        let result = resolve_binary(&cfg);
-        match prev {
-            Some(v) => std::env::set_var("PATH", v),
-            None => std::env::remove_var("PATH"),
-        }
-        let err = result.unwrap_err();
+        let path_env = empty.path().to_string_lossy();
+        let err = resolve_binary_in(&cfg, &path_env).unwrap_err();
         assert!(err.contains("not found in PATH"));
         assert!(err.contains("pi-path"));
     }

@@ -97,7 +97,8 @@ fn run() -> Result<(), String> {
         volumes.push((tmp.clone(), tmp.clone()));
         tmp
     } else if let Some(ref name) = cli.scratchpad {
-        let scratch = scratchpad_dir(name, &home)?;
+        let xdg_data_home = std::env::var("XDG_DATA_HOME").ok();
+        let scratch = scratchpad_dir(name, &home, xdg_data_home.as_deref())?;
         volumes.push((scratch.clone(), scratch.clone()));
         scratch
     } else if !cli.file.is_empty() {
@@ -270,13 +271,18 @@ fn make_temp_workdir() -> Result<String, String> {
 
 /// Resolve and create (if necessary) the named scratchpad directory.
 ///
-/// Follows the XDG Base Directory Specification: respects `$XDG_DATA_HOME`
-/// when set, otherwise falls back to `$HOME/.local/share`.
+/// Follows the XDG Base Directory Specification: respects `xdg_data_home`
+/// (the value of `$XDG_DATA_HOME`) when set and non-empty, otherwise falls
+/// back to `$HOME/.local/share`.
 /// Path: `$XDG_DATA_HOME/orka/scratch/<name>`
-fn scratchpad_dir(name: &str, home: &str) -> Result<String, String> {
-    let data_home = std::env::var("XDG_DATA_HOME")
-        .ok()
+///
+/// `xdg_data_home` is passed in rather than read from the environment so the
+/// resolution logic is testable without mutating process-global state (a data
+/// race under parallel tests, and unsafe as of edition 2024).
+fn scratchpad_dir(name: &str, home: &str, xdg_data_home: Option<&str>) -> Result<String, String> {
+    let data_home = xdg_data_home
         .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
         .unwrap_or_else(|| format!("{home}/.local/share"));
     let path = format!("{data_home}/orka/scratch/{name}");
     fs::create_dir_all(&path)
@@ -548,11 +554,10 @@ mod tests {
 
     #[test]
     fn scratchpad_dir_creates_directory() {
-        // XDG_DATA_HOME unset → falls back to $HOME/.local/share
+        // No XDG override → falls back to $HOME/.local/share
         let base = tempfile::tempdir().unwrap();
         let home = base.path().to_str().unwrap();
-        std::env::remove_var("XDG_DATA_HOME");
-        let result = scratchpad_dir("test-pad", home).unwrap();
+        let result = scratchpad_dir("test-pad", home, None).unwrap();
         let expected = format!("{home}/.local/share/orka/scratch/test-pad");
         assert_eq!(result, expected);
         assert!(std::path::Path::new(&result).is_dir());
@@ -562,8 +567,8 @@ mod tests {
     fn scratchpad_dir_is_idempotent() {
         let base = tempfile::tempdir().unwrap();
         let home = base.path().to_str().unwrap();
-        let r1 = scratchpad_dir("my-pad", home).unwrap();
-        let r2 = scratchpad_dir("my-pad", home).unwrap();
+        let r1 = scratchpad_dir("my-pad", home, None).unwrap();
+        let r2 = scratchpad_dir("my-pad", home, None).unwrap();
         assert_eq!(r1, r2);
         assert!(std::path::Path::new(&r1).is_dir());
     }
@@ -572,15 +577,8 @@ mod tests {
     fn scratchpad_dir_honours_xdg_data_home() {
         let base = tempfile::tempdir().unwrap();
         let xdg = base.path().join("xdg");
-        // Temporarily override XDG_DATA_HOME.  Tests run in the same process so
-        // we restore it afterwards to avoid polluting other tests.
-        let prev = std::env::var("XDG_DATA_HOME").ok();
-        std::env::set_var("XDG_DATA_HOME", &xdg);
-        let result = scratchpad_dir("xpad", "/irrelevant");
-        match prev {
-            Some(v) => std::env::set_var("XDG_DATA_HOME", v),
-            None => std::env::remove_var("XDG_DATA_HOME"),
-        }
+        let xdg_str = xdg.to_str().unwrap();
+        let result = scratchpad_dir("xpad", "/irrelevant", Some(xdg_str));
         let path = result.unwrap();
         let expected = format!("{}/orka/scratch/xpad", xdg.display());
         assert_eq!(path, expected);
