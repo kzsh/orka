@@ -98,21 +98,10 @@ pub struct Cli {
     #[arg(long)]
     pub preserve_container: bool,
 
-    /// Create a temporary directory with mktemp -d and use it as the container
-    /// workdir. The directory persists after the container exits.
-    /// Conflicts with --file and --scratchpad.
-    #[arg(long, conflicts_with_all = ["file", "scratchpad"])]
-    pub tmp: bool,
-
-    /// Create (or reuse) ~/.local/share/orka/scratch/<NAME> and use it as the
-    /// container workdir. Conflicts with --file and --tmp.
-    #[arg(long, value_name = "NAME", conflicts_with_all = ["file", "tmp"])]
-    pub scratchpad: Option<String>,
-
     /// Mount only specific files into the container instead of the entire working
     /// directory. Repeatable. Each file is mounted at the same absolute path it
     /// has on the host. The container workdir is set to the invoking directory.
-    #[arg(long, short = 'f', value_name = "FILE", conflicts_with_all = ["tmp", "scratchpad"])]
+    #[arg(long, short = 'f', value_name = "FILE")]
     pub file: Vec<std::path::PathBuf>,
 
     /// Print the license text and exit.
@@ -127,6 +116,27 @@ pub enum Commands {
         #[command(subcommand)]
         command: ConfigCommand,
     },
+
+    /// Run the agent in a named persistent scratch directory
+    /// (`$XDG_DATA_HOME/orka/scratch/<NAME>`, created on demand).
+    ///
+    /// Without NAME, existing scratchpads are listed in an interactive
+    /// fuzzy selector.
+    Scratchpad {
+        /// Scratchpad name. Omit to choose one interactively.
+        #[arg(value_name = "NAME")]
+        name: Option<String>,
+
+        /// List scratchpad names and exit.
+        #[arg(long, short = 'l')]
+        list: bool,
+    },
+
+    /// Run the agent in a fresh temporary directory created with `mktemp -d`.
+    ///
+    /// The directory persists after the container exits so any output can be
+    /// retrieved.
+    Tmp,
 }
 
 #[derive(Subcommand, Debug)]

@@ -21,8 +21,6 @@ orka [OPTIONS] [CONTAINER_ARGS]...
 | `--preset <NAME>` | Load volumes and env vars from a named preset in `~/.config/orka/environments.yaml`. Use `--preset list` to print available presets. |
 | `--env KEY=VALUE` | Inject an env var into the container. Repeatable. |
 | `--file` / `-f <FILE>` | Mount a specific file instead of the CWD. Repeatable. |
-| `--tmp` | Use a temporary directory as the container workdir. |
-| `--scratchpad <NAME>` | Use a named persistent scratch directory as the workdir. |
 | `--harness-version` / `-v <VER>` | Install a specific agent harness version instead of `latest`. Applies to `--runtime pi` only. |
 | `--no-browser` | Skip installing agent-browser and Chromium. Applies to `--runtime pi` only. |
 | `--preserve-container` | Keep the container after it exits instead of removing it automatically. |
@@ -38,6 +36,9 @@ orka [OPTIONS] [CONTAINER_ARGS]...
 | `orka config init` | Write the bundled config templates to `~/.config/orka/`, skipping existing files. |
 | `orka config path` | Print the paths orka reads configuration from. |
 | `orka config completions <SHELL>` | Print a completion script for `bash`, `zsh`, `fish`, `elvish`, or `powershell`. |
+| `orka scratchpad [NAME]` | Run in `$XDG_DATA_HOME/orka/scratch/<NAME>` (created on demand). Without `NAME`, pick an existing scratchpad from an interactive fuzzy list. |
+| `orka scratchpad --list` | Print existing scratchpad names and exit. |
+| `orka tmp` | Run in a fresh `mktemp -d` directory. It persists after the container exits. |
 
 Installing completions:
 
@@ -116,7 +117,7 @@ wildcards.
 When you run `orka`, it builds two Docker images in sequence: a base image
 containing slow-changing apt dependencies, then the agent image on top. The
 agent image embeds the chosen runtime (pi, claude-code, or codex). Your working
-directory (or the path specified via `--file`, `--tmp`, or `--scratchpad`) is
+directory (or the path selected by `--file`, `orka tmp`, or `orka scratchpad`) is
 mounted into the container, and `orka` drops you into an interactive session.
 
 Both the Dockerfiles and the entrypoint script are embedded in the binary at

@@ -9,6 +9,7 @@ mod cli;
 mod config;
 mod docker;
 mod expand;
+mod scratchpad;
 mod shadow;
 
 use cli::{Cli, Commands, ConfigCommand};
@@ -50,10 +51,37 @@ fn run() -> Result<(), String> {
         });
     let mut cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
 
-    // Subcommands are self-contained: they neither read config.yaml defaults
-    // nor start a container.
-    if let Some(ref command) = cli.command {
-        return run_command(command);
+    // `config` is self-contained: it neither reads config.yaml defaults nor
+    // starts a container.  `scratchpad` and `tmp` only select the workdir and
+    // then fall through to the normal run path.
+    let mut scratchpad_name: Option<String> = None;
+    let mut use_tmp = false;
+    match cli.command {
+        Some(Commands::Config { ref command }) => return run_config_command(command),
+        Some(Commands::Tmp) => {
+            if !cli.file.is_empty() {
+                return Err("tmp conflicts with --file".to_string());
+            }
+            use_tmp = true;
+        }
+        Some(Commands::Scratchpad { ref name, list }) => {
+            let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+            let xdg = std::env::var("XDG_DATA_HOME").ok();
+            if list {
+                for name in scratchpad::list(&home, xdg.as_deref())? {
+                    println!("{name}");
+                }
+                return Ok(());
+            }
+            if !cli.file.is_empty() {
+                return Err("scratchpad conflicts with --file".to_string());
+            }
+            scratchpad_name = Some(match name {
+                Some(n) => n.clone(),
+                None => select_scratchpad(&home, xdg.as_deref())?,
+            });
+        }
+        None => {}
     }
 
     // Apply config.yaml defaults for any value the user did not explicitly set.
@@ -94,13 +122,13 @@ fn run() -> Result<(), String> {
     // Resolved absolute paths of --file mounts; used to build the prompt snippet.
     let mut mounted_files: Vec<String> = Vec::new();
 
-    let workdir = if cli.tmp {
+    let workdir = if use_tmp {
         let tmp = make_temp_workdir()?;
         volumes.push((tmp.clone(), tmp.clone()));
         tmp
-    } else if let Some(ref name) = cli.scratchpad {
+    } else if let Some(ref name) = scratchpad_name {
         let xdg_data_home = std::env::var("XDG_DATA_HOME").ok();
-        let scratch = scratchpad_dir(name, &home, xdg_data_home.as_deref())?;
+        let scratch = scratchpad::dir(name, &home, xdg_data_home.as_deref())?;
         volumes.push((scratch.clone(), scratch.clone()));
         scratch
     } else if !cli.file.is_empty() {
@@ -127,7 +155,7 @@ fn run() -> Result<(), String> {
     let mut container_args = container_args;
     if !container_args.is_empty() {
         if let Some(snippet) =
-            prompt_context_snippet(cli.tmp, cli.scratchpad.as_deref(), &mounted_files)
+            prompt_context_snippet(use_tmp, scratchpad_name.as_deref(), &mounted_files)
         {
             container_args[0] = format!("{snippet}\n\n{}", container_args[0]);
         }
@@ -271,25 +299,17 @@ fn make_temp_workdir() -> Result<String, String> {
     Ok(path.trim().to_string())
 }
 
-/// Resolve and create (if necessary) the named scratchpad directory.
-///
-/// Follows the XDG Base Directory Specification: respects `xdg_data_home`
-/// (the value of `$XDG_DATA_HOME`) when set and non-empty, otherwise falls
-/// back to `$HOME/.local/share`.
-/// Path: `$XDG_DATA_HOME/orka/scratch/<name>`
-///
-/// `xdg_data_home` is passed in rather than read from the environment so the
-/// resolution logic is testable without mutating process-global state (a data
-/// race under parallel tests, and unsafe as of edition 2024).
-fn scratchpad_dir(name: &str, home: &str, xdg_data_home: Option<&str>) -> Result<String, String> {
-    let data_home = xdg_data_home
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| format!("{home}/.local/share"));
-    let path = format!("{data_home}/orka/scratch/{name}");
-    fs::create_dir_all(&path)
-        .map_err(|e| format!("failed to create scratchpad directory {path}: {e}"))?;
-    Ok(path)
+/// Choose an existing scratchpad interactively.
+fn select_scratchpad(home: &str, xdg_data_home: Option<&str>) -> Result<String, String> {
+    let names = scratchpad::list(home, xdg_data_home)?;
+    if names.is_empty() {
+        return Err(format!(
+            "no scratchpads exist yet in {}\ncreate one with: orka scratchpad <NAME>",
+            scratchpad::root(home, xdg_data_home)
+        ));
+    }
+    scratchpad::pick(&names, "scratchpad> ")?
+        .ok_or_else(|| "no scratchpad selected".to_string())
 }
 
 /// Resolve a `--file` argument to an absolute path string ready to pass to the container engine.
@@ -383,29 +403,35 @@ fn apply_config_defaults(
     Ok(defaults)
 }
 
-/// Dispatch a subcommand.
-fn run_command(command: &Commands) -> Result<(), String> {
+/// Dispatch a `config` subcommand.
+fn run_config_command(command: &ConfigCommand) -> Result<(), String> {
     match command {
-        Commands::Config { command } => match command {
-            ConfigCommand::Init => run_init(),
-            ConfigCommand::Completions { shell } => {
-                let mut cmd = Cli::command();
-                let name = cmd.get_name().to_string();
-                clap_complete::generate(*shell, &mut cmd, name, &mut std::io::stdout());
-                Ok(())
-            }
-            ConfigCommand::Path => {
-                println!("defaults     {}", config::defaults_path().display());
-                println!("environments {}", config::config_path().display());
-                println!("shadow       {}", config::global_shadow_path().display());
-                println!(
-                    "dockerfile   {}",
-                    config::custom_dockerfile_base_path().display()
-                );
-                Ok(())
-            }
-        },
+        ConfigCommand::Init => run_init(),
+        ConfigCommand::Completions { shell } => {
+            let mut cmd = Cli::command();
+            let name = cmd.get_name().to_string();
+            clap_complete::generate(*shell, &mut cmd, name, &mut std::io::stdout());
+            Ok(())
+        }
+        ConfigCommand::Path => {
+            println!("defaults     {}", config::defaults_path().display());
+            println!("environments {}", config::config_path().display());
+            println!("shadow       {}", config::global_shadow_path().display());
+            println!(
+                "dockerfile   {}",
+                config::custom_dockerfile_base_path().display()
+            );
+            println!("scratchpads  {}", scratchpad_root_display());
+            Ok(())
+        }
     }
+}
+
+/// Scratchpad root path as shown by `orka config path`.
+fn scratchpad_root_display() -> String {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+    let xdg = std::env::var("XDG_DATA_HOME").ok();
+    scratchpad::root(&home, xdg.as_deref())
 }
 
 /// Write the bundled config templates to `~/.config/orka/`.
@@ -577,38 +603,5 @@ mod tests {
         assert!(p.is_dir(), "mktemp -d path is not a directory: {path}");
         // Clean up so we don't litter /tmp.
         fs::remove_dir(&path).unwrap();
-    }
-
-    #[test]
-    fn scratchpad_dir_creates_directory() {
-        // No XDG override → falls back to $HOME/.local/share
-        let base = tempfile::tempdir().unwrap();
-        let home = base.path().to_str().unwrap();
-        let result = scratchpad_dir("test-pad", home, None).unwrap();
-        let expected = format!("{home}/.local/share/orka/scratch/test-pad");
-        assert_eq!(result, expected);
-        assert!(std::path::Path::new(&result).is_dir());
-    }
-
-    #[test]
-    fn scratchpad_dir_is_idempotent() {
-        let base = tempfile::tempdir().unwrap();
-        let home = base.path().to_str().unwrap();
-        let r1 = scratchpad_dir("my-pad", home, None).unwrap();
-        let r2 = scratchpad_dir("my-pad", home, None).unwrap();
-        assert_eq!(r1, r2);
-        assert!(std::path::Path::new(&r1).is_dir());
-    }
-
-    #[test]
-    fn scratchpad_dir_honours_xdg_data_home() {
-        let base = tempfile::tempdir().unwrap();
-        let xdg = base.path().join("xdg");
-        let xdg_str = xdg.to_str().unwrap();
-        let result = scratchpad_dir("xpad", "/irrelevant", Some(xdg_str));
-        let path = result.unwrap();
-        let expected = format!("{}/orka/scratch/xpad", xdg.display());
-        assert_eq!(path, expected);
-        assert!(std::path::Path::new(&path).is_dir());
     }
 }
