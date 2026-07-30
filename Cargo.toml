@@ -16,6 +16,7 @@ opt-level = "z"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
+clap_complete = "4"
 ignore = "0.4"
 libc = "0.2"
 noyalib = "0.0.17"

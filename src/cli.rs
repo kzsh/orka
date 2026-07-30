@@ -1,4 +1,5 @@
-use clap::{Parser, ValueEnum};
+use clap::{Parser, Subcommand, ValueEnum};
+use clap_complete::Shell;
 use serde::Deserialize;
 
 /// Isolation backend to use for sandboxing the agent.
@@ -49,6 +50,9 @@ pub enum Harness {
 #[derive(Parser, Debug)]
 #[command(name = "orka", about = "Agent harness container wrapper", version)]
 pub struct Cli {
+    #[command(subcommand)]
+    pub command: Option<Commands>,
+
     /// Isolation backend.  Container engines (docker/podman) build an OCI image;
     /// bubblewrap sandboxes the host filesystem directly (Linux only, no image
     /// build required).
@@ -114,9 +118,37 @@ pub struct Cli {
     /// Print the license text and exit.
     #[arg(long)]
     pub print_license: bool,
+}
 
-    /// Write default config files to ~/.config/orka/ and exit.
+#[derive(Subcommand, Debug)]
+pub enum Commands {
+    /// Configuration and shell integration helpers.
+    Config {
+        #[command(subcommand)]
+        command: ConfigCommand,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ConfigCommand {
+    /// Write default config files to ~/.config/orka/.
     /// Skips any file that already exists.
-    #[arg(long)]
-    pub init: bool,
+    Init,
+
+    /// Print a shell completion script to stdout.
+    ///
+    /// bash:       orka config completions bash > ~/.local/share/bash-completion/completions/orka
+    /// zsh:        orka config completions zsh  > "${fpath[1]}/_orka"
+    /// fish:       orka config completions fish > ~/.config/fish/completions/orka.fish
+    /// elvish:     orka config completions elvish
+    /// powershell: orka config completions powershell
+    #[command(verbatim_doc_comment)]
+    Completions {
+        /// Shell dialect to emit.
+        #[arg(value_enum)]
+        shell: Shell,
+    },
+
+    /// Print the paths orka reads configuration from.
+    Path,
 }

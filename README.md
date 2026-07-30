@@ -31,6 +31,29 @@ orka [OPTIONS] [CONTAINER_ARGS]...
 | `--verbose` | Show build output instead of suppressing it. |
 | `--print-license` | Print the license text and exit. |
 
+### Subcommands
+
+| Command | Description |
+|---|---|
+| `orka config init` | Write the bundled config templates to `~/.config/orka/`, skipping existing files. |
+| `orka config path` | Print the paths orka reads configuration from. |
+| `orka config completions <SHELL>` | Print a completion script for `bash`, `zsh`, `fish`, `elvish`, or `powershell`. |
+
+Installing completions:
+
+```sh
+# bash
+mkdir -p ~/.local/share/bash-completion/completions
+orka config completions bash > ~/.local/share/bash-completion/completions/orka
+
+# zsh (any directory on $fpath)
+orka config completions zsh > "${fpath[1]}/_orka"
+
+# fish
+mkdir -p ~/.config/fish/completions
+orka config completions fish > ~/.config/fish/completions/orka.fish
+```
+
 ### Configuration file
 
 Copy the bundled template to set persistent defaults:

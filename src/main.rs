@@ -11,7 +11,7 @@ mod docker;
 mod expand;
 mod shadow;
 
-use cli::Cli;
+use cli::{Cli, Commands, ConfigCommand};
 use docker::RunConfig;
 
 const LICENSE: &str = include_str!("../PUBLIC-LICENSE");
@@ -50,6 +50,12 @@ fn run() -> Result<(), String> {
         });
     let mut cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
 
+    // Subcommands are self-contained: they neither read config.yaml defaults
+    // nor start a container.
+    if let Some(ref command) = cli.command {
+        return run_command(command);
+    }
+
     // Apply config.yaml defaults for any value the user did not explicitly set.
     let defaults = apply_config_defaults(&mut cli, &matches)?;
 
@@ -61,10 +67,6 @@ fn run() -> Result<(), String> {
         println!();
         print!("{THIRD_PARTY_LICENSES}");
         return Ok(());
-    }
-
-    if cli.init {
-        return run_init();
     }
 
     let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
@@ -379,6 +381,31 @@ fn apply_config_defaults(
     }
 
     Ok(defaults)
+}
+
+/// Dispatch a subcommand.
+fn run_command(command: &Commands) -> Result<(), String> {
+    match command {
+        Commands::Config { command } => match command {
+            ConfigCommand::Init => run_init(),
+            ConfigCommand::Completions { shell } => {
+                let mut cmd = Cli::command();
+                let name = cmd.get_name().to_string();
+                clap_complete::generate(*shell, &mut cmd, name, &mut std::io::stdout());
+                Ok(())
+            }
+            ConfigCommand::Path => {
+                println!("defaults     {}", config::defaults_path().display());
+                println!("environments {}", config::config_path().display());
+                println!("shadow       {}", config::global_shadow_path().display());
+                println!(
+                    "dockerfile   {}",
+                    config::custom_dockerfile_base_path().display()
+                );
+                Ok(())
+            }
+        },
+    }
 }
 
 /// Write the bundled config templates to `~/.config/orka/`.
