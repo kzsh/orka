@@ -43,10 +43,16 @@ environments:
     env:
       - PATH=/usr/local/go/bin:~/go/bin:$PATH
 
+  # cargo, rustc, and clippy are rustup proxies in ~/.cargo/bin; they resolve
+  # toolchains via RUSTUP_HOME, so both directories must be mounted.
   rust:
     volumes:
       - ~/.cargo/:~/.cargo/
       - ~/.rustup/:~/.rustup/
+    env:
+      - PATH=~/.cargo/bin:$PATH
+      - CARGO_HOME=~/.cargo
+      - RUSTUP_HOME=~/.rustup
 
   godot:
     volumes:
