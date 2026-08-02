@@ -20,11 +20,10 @@ RUN chown -R "$USER_UID:$USER_GID" /home/$UNAME
 
 # Isolated install root for pi and its bun globals.  Lives outside $HOME so
 # that mounted presets (e.g. bun, uv) can never shadow it.
-# /opt/browser-cache holds the Chromium binary when agent-browser is present
-# in the base image.  mkdir -p is a no-op if the directory already exists;
-# it also ensures the chown succeeds when a custom base omits agent-browser.
-RUN mkdir -p /opt/pi-bun /opt/browser-cache \
-    && chown -R "$USER_UID:$USER_GID" /opt/pi-bun /opt/browser-cache
+# The Chrome binary from the base image lives in /opt/browser-cache and is only
+# read at runtime, so it needs no ownership change.
+RUN mkdir -p /opt/pi-bun \
+    && chown -R "$USER_UID:$USER_GID" /opt/pi-bun
 
 WORKDIR "/home/$UNAME"
 

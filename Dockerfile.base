@@ -117,12 +117,20 @@ RUN set -eux && \
     chmod +x /usr/local/bin/agent-browser && \
     agent-browser --version
 
-# Stable path for the Chromium binary cache, independent of any runtime user's
-# home directory.  The pi Dockerfile chowns this to the runtime user.
-RUN mkdir -p /opt/browser-cache
+# `agent-browser install` downloads Chrome for Testing into
+# $HOME/.agent-browser/browsers.  Running it as root would hide the download in
+# /root, so install under a throwaway HOME and relocate the result to a stable,
+# world-readable path.  AGENT_BROWSER_EXECUTABLE_PATH then points every runtime
+# user at that binary regardless of their own home directory.
+RUN set -eux && \
+    mkdir -p /opt/browser-cache && \
+    HOME=/tmp/agent-browser-install agent-browser install && \
+    mv /tmp/agent-browser-install/.agent-browser/browsers/* /opt/browser-cache/ && \
+    rm -rf /tmp/agent-browser-install && \
+    CHROME=$(find /opt/browser-cache -maxdepth 2 -type f -name chrome | head -n 1) && \
+    test -n "$CHROME" && \
+    ln -s "$CHROME" /opt/browser-cache/chrome && \
+    chmod -R a+rX /opt/browser-cache
 
-# Point Playwright (used by agent-browser) at the fixed cache path.
-# This env var is inherited by every image that builds FROM this one.
-ENV PLAYWRIGHT_BROWSERS_PATH="/opt/browser-cache"
-
-RUN agent-browser install
+# Inherited by every image that builds FROM this one.
+ENV AGENT_BROWSER_EXECUTABLE_PATH="/opt/browser-cache/chrome"
