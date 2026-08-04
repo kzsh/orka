@@ -114,7 +114,11 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
         .or_else(|_| std::env::var("LOGNAME"))
         .unwrap_or_else(|_| "appuser".to_string());
 
-    let need_base = cfg.no_cache || !image_exists(&cfg.engine_binary, &base_ref);
+    if cfg.backend.is_apple_container() && !cfg.dry_run {
+        ensure_apple_container_running(&cfg.engine_binary)?;
+    }
+
+    let need_base = cfg.no_cache || !image_exists(&cfg.engine_binary, cfg.backend, &base_ref);
 
     let tag = match cfg.harness {
         Harness::Pi => cfg
@@ -292,18 +296,7 @@ fn run_pi_command_args(
     if !cfg.preserve_container {
         cmd.push(s("--rm"));
     }
-    cmd.push(s("--cap-drop=ALL"));
-    cmd.push(s("--security-opt=no-new-privileges"));
-    if matches!(cfg.backend, Backend::Podman) {
-        // --userns=keep-id maps the host user into the container at the same
-        // UID without a name lookup.  Passing --user uid:gid on top would
-        // make Podman reverse-resolve the numeric UID to a username, which
-        // fails for LDAP/sssd users that are absent from /etc/passwd.
-        cmd.push(s("--userns=keep-id"));
-    } else {
-        cmd.push(s("--user"));
-        cmd.push(format!("{uid}:{gid}"));
-    }
+    push_isolation_args(&mut cmd, uid, gid, cfg);
 
     // Pi config/data dir is always mounted so settings persist across runs.
     cmd.push(s("--volume"));
@@ -407,14 +400,7 @@ fn run_claude_command_args(
     if !cfg.preserve_container {
         cmd.push(s("--rm"));
     }
-    cmd.push(s("--cap-drop=ALL"));
-    cmd.push(s("--security-opt=no-new-privileges"));
-    if matches!(cfg.backend, Backend::Podman) {
-        cmd.push(s("--userns=keep-id"));
-    } else {
-        cmd.push(s("--user"));
-        cmd.push(format!("{uid}:{gid}"));
-    }
+    push_isolation_args(&mut cmd, uid, gid, cfg);
 
     // Claude config/data dir is always mounted so conversation history persists.
     cmd.push(s("--volume"));
@@ -509,14 +495,7 @@ fn run_codex_command_args(
     if !cfg.preserve_container {
         cmd.push(s("--rm"));
     }
-    cmd.push(s("--cap-drop=ALL"));
-    cmd.push(s("--security-opt=no-new-privileges"));
-    if matches!(cfg.backend, Backend::Podman) {
-        cmd.push(s("--userns=keep-id"));
-    } else {
-        cmd.push(s("--user"));
-        cmd.push(format!("{uid}:{gid}"));
-    }
+    push_isolation_args(&mut cmd, uid, gid, cfg);
 
     // Codex config/data dir is always mounted so settings and history persist.
     cmd.push(s("--volume"));
@@ -552,19 +531,76 @@ fn run_codex_command_args(
 // Execution helpers
 // ---------------------------------------------------------------------------
 
+/// Push the sandbox and user-identity flags shared by every harness run
+/// command.
+fn push_isolation_args(cmd: &mut Vec<String>, uid: u32, gid: u32, cfg: &RunConfig) {
+    cmd.push(s("--cap-drop=ALL"));
+
+    // Apple's `container` has no --security-opt and rejects unknown flags.
+    if !cfg.backend.is_apple_container() {
+        cmd.push(s("--security-opt=no-new-privileges"));
+    }
+
+    if matches!(cfg.backend, Backend::Podman) {
+        // --userns=keep-id maps the host user into the container at the same
+        // UID without a name lookup.  Passing --user uid:gid on top would
+        // make Podman reverse-resolve the numeric UID to a username, which
+        // fails for LDAP/sssd users that are absent from /etc/passwd.
+        cmd.push(s("--userns=keep-id"));
+    } else {
+        cmd.push(s("--user"));
+        cmd.push(format!("{uid}:{gid}"));
+    }
+}
+
 /// Returns true when the image `image_ref` is already present in the local
 /// store of the given container engine.  A non-zero exit code (image not
 /// found) is silently treated as `false`; actual execution errors (engine
 /// binary missing, etc.) also return `false` so the caller falls back to a
 /// normal build.
-fn image_exists(engine: &str, image_ref: &str) -> bool {
+fn image_exists(engine: &str, backend: Backend, image_ref: &str) -> bool {
+    let mut args = vec!["image", "inspect"];
+    // Apple's `container image inspect` has no --format; it always emits JSON
+    // and the exit status alone answers the question.
+    if !backend.is_apple_container() {
+        args.extend(["--format", "{{.Id}}"]);
+    }
+    args.push(image_ref);
+
     Command::new(engine)
-        .args(["image", "inspect", "--format", "{{.Id}}", image_ref])
+        .args(args)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status()
         .map(|s| s.success())
         .unwrap_or(false)
+}
+
+/// Apple's `container` CLI talks to a launchd-managed API server; every
+/// subcommand fails with a low-level XPC error when it is not running.  Probe
+/// it once so the user gets an actionable message instead.
+fn ensure_apple_container_running(engine: &str) -> Result<(), String> {
+    let status = Command::new(engine)
+        .args(["system", "status"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map_err(|e| {
+            format!(
+                "failed to launch `{engine}`: {e}\n\
+                 note: --engine container requires Apple's container CLI \
+                 (https://github.com/apple/container) on macOS 26 or later"
+            )
+        })?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "`{engine} system status` reports the container services are not running\n\
+             note: start them with `{engine} system start`"
+        ))
+    }
 }
 
 fn exec(args: &[String]) -> Result<(), String> {
@@ -794,10 +830,7 @@ mod tests {
 
         let mut cfg = make_cfg(harness);
         cfg.backend = backend;
-        cfg.engine_binary = match backend {
-            Backend::Docker => "docker".to_string(),
-            _ => "podman".to_string(),
-        };
+        cfg.engine_binary = backend.binary().to_string();
 
         match harness {
             Harness::Pi => run_pi_command_args("orka:latest", 1000, 1000, &cfg),
@@ -862,8 +895,81 @@ mod tests {
         // Use a tag that cannot exist in any real registry to guarantee absence.
         assert!(!image_exists(
             "docker",
+            Backend::Docker,
             "orka-test-does-not-exist:__never__"
         ));
+    }
+
+    /// `container` rejects unknown flags outright, and `--security-opt` is not
+    /// part of its surface.  Every harness must omit it while still dropping
+    /// capabilities and pinning the user.
+    #[test]
+    fn apple_container_run_omits_security_opt_for_every_harness() {
+        for harness in [Harness::Pi, Harness::Claude, Harness::Codex] {
+            let cmd = run_args_for(harness, Backend::Container);
+            assert_eq!(cmd[0], "container");
+            assert!(
+                !cmd.iter().any(|a| a.starts_with("--security-opt")),
+                "container command must not pass --security-opt: {cmd:?}"
+            );
+            assert!(
+                cmd.contains(&"--cap-drop=ALL".to_string()),
+                "container command must drop capabilities: {cmd:?}"
+            );
+            assert!(!cmd.contains(&"--userns=keep-id".to_string()));
+            let idx = cmd
+                .iter()
+                .position(|a| a == "--user")
+                .unwrap_or_else(|| panic!("container command must pass --user: {cmd:?}"));
+            assert_eq!(cmd[idx + 1], "1000:1000");
+        }
+    }
+
+    /// Docker and Podman keep `--security-opt=no-new-privileges`; only the
+    /// Apple backend drops it.
+    #[test]
+    fn docker_and_podman_keep_security_opt() {
+        for backend in [Backend::Docker, Backend::Podman] {
+            let cmd = run_args_for(Harness::Pi, backend);
+            assert!(
+                cmd.contains(&"--security-opt=no-new-privileges".to_string()),
+                "{backend:?} command must pass --security-opt: {cmd:?}"
+            );
+        }
+    }
+
+    /// Build commands are flag-compatible with `container build`, so the same
+    /// argv shape is emitted for every engine apart from the leading binary.
+    #[test]
+    fn apple_container_build_matches_docker_argv_shape() {
+        let mut docker_cfg = make_cfg(Harness::Pi);
+        docker_cfg.harness_version = Some("1.2.3".to_string());
+        let mut container_cfg = make_cfg(Harness::Pi);
+        container_cfg.harness_version = Some("1.2.3".to_string());
+        container_cfg.backend = Backend::Container;
+        container_cfg.engine_binary = "container".to_string();
+
+        let docker_cmd = build_pi_main_command(
+            "orka:1.2.3",
+            "orka-base:latest",
+            "user",
+            1000,
+            1000,
+            "/ctx",
+            &docker_cfg,
+        );
+        let container_cmd = build_pi_main_command(
+            "orka:1.2.3",
+            "orka-base:latest",
+            "user",
+            1000,
+            1000,
+            "/ctx",
+            &container_cfg,
+        );
+
+        assert_eq!(container_cmd[0], "container");
+        assert_eq!(docker_cmd[1..], container_cmd[1..]);
     }
 
     #[test]

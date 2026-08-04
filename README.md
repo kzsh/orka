@@ -16,7 +16,7 @@ orka [OPTIONS] [CONTAINER_ARGS]...
 
 | Flag | Description |
 |---|---|
-| `--engine <ENGINE>` | Isolation backend to use: `docker` (default), `podman`, or `bubblewrap`. |
+| `--engine <ENGINE>` | Isolation backend to use: `docker` (default), `podman`, `container` (alpha; Apple silicon, macOS 26+), or `bubblewrap`. |
 | `--runtime <RUNTIME>` | Agent runtime to use: `pi` (default), `claude`, or `codex`. |
 | `--preset <NAME>` | Load volumes and env vars from a named preset in `~/.config/orka/environments.yaml`. Use `--preset list` to print available presets. |
 | `--env KEY=VALUE` | Inject an env var into the container. Repeatable. |

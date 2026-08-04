@@ -7,7 +7,8 @@
 #
 # Supported keys:
 #
-#   engine          - container engine binary to use (docker | podman | bubblewrap)
+#   engine          - container engine binary to use (docker | podman | container | bubblewrap)
+#                     `container` is Apple's CLI on macOS; support is alpha
 #   harness         - agent harness to launch          (pi | claude | codex)
 #   harness-version - harness version to install        (e.g. 1.2.3; pi harness only)
 #   pi-path         - absolute path to the pi binary    (bubblewrap backend only)

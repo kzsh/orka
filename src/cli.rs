@@ -4,7 +4,7 @@ use serde::Deserialize;
 
 /// Isolation backend to use for sandboxing the agent.
 ///
-/// Container engines (docker, podman) build an OCI image and run it.
+/// Container engines (docker, podman, container) build an OCI image and run it.
 /// Bubblewrap skips the image entirely and directly namespaces the host
 /// filesystem — lighter weight but Linux-only.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, ValueEnum, Deserialize)]
@@ -13,6 +13,9 @@ pub enum Backend {
     #[default]
     Docker,
     Podman,
+    /// Apple's `container` CLI (alpha).  Requires macOS 26 on Apple silicon;
+    /// each container runs in its own lightweight VM.
+    Container,
     /// Lightweight Linux-only sandbox; no image build step required.
     Bubblewrap,
 }
@@ -24,8 +27,16 @@ impl Backend {
         match self {
             Backend::Docker => "docker",
             Backend::Podman => "podman",
+            Backend::Container => "container",
             Backend::Bubblewrap => "bwrap",
         }
+    }
+
+    /// Returns true for Apple's `container` CLI, whose flag set diverges from
+    /// the Docker/Podman surface in ways orka has to account for: it has no
+    /// `--security-opt`, and `image inspect` takes no `--format`.
+    pub fn is_apple_container(self) -> bool {
+        self == Backend::Container
     }
 
     /// Returns true when the backend is bubblewrap (no container image needed).
@@ -53,9 +64,9 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
 
-    /// Isolation backend.  Container engines (docker/podman) build an OCI image;
+    /// Isolation backend.  Container engines (docker/podman/container) build an OCI image;
     /// bubblewrap sandboxes the host filesystem directly (Linux only, no image
-    /// build required).
+    /// build required).  Support for `container` is alpha.
     #[arg(long, value_enum, default_value = "docker")]
     pub engine: Backend,
 
