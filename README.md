@@ -70,6 +70,16 @@ cp config/config.yaml ~/.config/orka/config.yaml
 matching command-line flag; `preset` and `env` lists are appended to by the
 command line, and boolean flags can only be turned on.
 
+`preset` makes presets always-on, which suits tool presets you want everywhere:
+
+```yaml
+preset:
+  - jira
+```
+
+`orka --preset rust` then applies `jira` and `rust`. Naming an always-on preset
+again on the command line is a no-op, not a duplicate mount.
+
 `harness-args` sets agent flags per harness so they need not be typed on every
 run. They are inserted before any arguments passed after `--`:
 

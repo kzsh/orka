@@ -186,9 +186,14 @@ fn run() -> Result<(), String> {
                 let mut available: Vec<&str> =
                     cfg.environments.keys().map(String::as_str).collect();
                 available.sort_unstable();
-                format!(
-                    "unknown preset: {preset_name}\navailable presets: {}",
-                    available.join(", ")
+                let from_config = defaults
+                    .preset
+                    .as_ref()
+                    .is_some_and(|p| p.iter().any(|c| c == preset_name));
+                unknown_preset_error(
+                    preset_name,
+                    &available,
+                    from_config.then(|| config::defaults_path().display().to_string()),
                 )
             })?;
 
@@ -435,6 +440,29 @@ fn merge_defaults(cli: &mut Cli, matches: &clap::ArgMatches, defaults: &config::
     cli.verbose |= defaults.verbose.unwrap_or(false);
     cli.quiet |= defaults.quiet.unwrap_or(false);
     cli.preserve_container |= defaults.preserve_container.unwrap_or(false);
+}
+
+/// Error text for a preset that is not defined in `environments.yaml`.
+///
+/// `always_on_source` is the path to the config file when the preset came from
+/// its always-on `preset` list, so a stale entry there points at the file to
+/// edit instead of looking like a mistyped flag.
+fn unknown_preset_error(
+    preset_name: &str,
+    available: &[&str],
+    always_on_source: Option<String>,
+) -> String {
+    let mut msg = format!(
+        "unknown preset: {preset_name}\navailable presets: {}",
+        available.join(", ")
+    );
+    if let Some(path) = always_on_source {
+        msg.push_str(&format!(
+            "\nnote: '{preset_name}' is listed under 'preset' in {path}; \
+             remove it there or define it in the environments file"
+        ));
+    }
+    msg
 }
 
 /// Place configured harness arguments ahead of the arguments the user passed
@@ -696,6 +724,25 @@ mod tests {
         merge_defaults(&mut cli, &matches, &defaults);
         assert_eq!(cli.preset, vec!["rust".to_string(), "go".to_string()]);
         assert_eq!(cli.env, vec!["A=1".to_string(), "B=2".to_string()]);
+    }
+
+    #[test]
+    fn unknown_preset_error_from_cli_has_no_config_note() {
+        let msg = unknown_preset_error("jra", &["jira", "rust"], None);
+        assert!(msg.contains("unknown preset: jra"));
+        assert!(msg.contains("available presets: jira, rust"));
+        assert!(!msg.contains("note:"));
+    }
+
+    #[test]
+    fn unknown_preset_error_from_config_points_at_the_file() {
+        let msg = unknown_preset_error(
+            "jra",
+            &["jira"],
+            Some("/home/u/.config/orka/config.yaml".to_string()),
+        );
+        assert!(msg.contains("/home/u/.config/orka/config.yaml"));
+        assert!(msg.contains("remove it there"));
     }
 
     /// Naming an always-on preset again must not duplicate its mounts.

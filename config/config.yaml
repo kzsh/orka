@@ -16,7 +16,9 @@
 #   codex-path      - absolute path to the codex binary  (bubblewrap backend only)
 #   harness-args    - extra arguments per harness, forwarded to the agent ahead of
 #                     anything passed after `--` on the command line
-#   preset          - presets applied to every run (same as repeating --preset)
+#   preset          - always-on presets, applied to every run (same as repeating
+#                     --preset); repeating one of these on the command line is a
+#                     no-op rather than a duplicate mount
 #   env             - KEY=VALUE pairs injected into every run (same as --env)
 #   no-cache        - always rebuild the image            (true | false)
 #   verbose         - always pass VERBOSE=1 into the container (true | false)
@@ -35,7 +37,7 @@
 #   pi: []
 
 # preset:
-#   - rust
+#   - jira
 # env:
 #   - RUST_LOG=debug
 # no-cache: false
