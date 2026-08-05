@@ -44,5 +44,15 @@ ENV PATH="/opt/pi-bun/bin:$PATH"
 RUN bun install --global @earendil-works/pi-coding-agent@${VERSION} && \
     which pi
 
+# Extensions under the bind-mounted ~/.pi/agent/extensions import
+# @earendil-works/* and typebox as peer dependencies.  Bun resolves those by
+# walking node_modules upwards from the extension file; finding none, its
+# auto-install fetches pi's whole dependency tree from the registry (~180 MB)
+# on every start, and --rm throws it away again.  $HOME is an ancestor of the
+# mount and cannot be shadowed by it, so a node_modules symlink here points
+# that walk at the global install instead.
+RUN test -d "$BUN_INSTALL/install/global/node_modules/@earendil-works/pi-coding-agent" && \
+    ln -s "$BUN_INSTALL/install/global/node_modules" "/home/$UNAME/node_modules"
+
 COPY ./entrypoint.sh /usr/local/bin/entrypoint.sh
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
