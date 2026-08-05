@@ -161,6 +161,13 @@ fn run() -> Result<(), String> {
         }
     }
 
+    // config.yaml harness-args run ahead of the user's `--` arguments so the
+    // prompt (which must stay last for claude and codex) is not displaced.
+    if let Some(ref harness_args) = defaults.harness_args {
+        container_args =
+            prepend_harness_args(harness_args.for_harness(cli.harness), container_args);
+    }
+
     let agents_dir = format!("{home}/.agents");
     if Path::new(&agents_dir).is_dir() {
         volumes.push((agents_dir.clone(), agents_dir));
@@ -308,8 +315,7 @@ fn select_scratchpad(home: &str, xdg_data_home: Option<&str>) -> Result<String, 
             scratchpad::root(home, xdg_data_home)
         ));
     }
-    scratchpad::pick(&names, "scratchpad> ")?
-        .ok_or_else(|| "no scratchpad selected".to_string())
+    scratchpad::pick(&names, "scratchpad> ")?.ok_or_else(|| "no scratchpad selected".to_string())
 }
 
 /// Resolve a `--file` argument to an absolute path string ready to pass to the container engine.
@@ -373,10 +379,15 @@ fn apply_config_defaults(
     cli: &mut Cli,
     matches: &clap::ArgMatches,
 ) -> Result<config::Defaults, String> {
-    use clap::parser::ValueSource;
-
     let path = config::defaults_path();
     let defaults = config::load_defaults(&path)?;
+    merge_defaults(cli, matches, &defaults);
+    Ok(defaults)
+}
+
+/// Merge loaded `defaults` into `cli`, leaving anything the user set alone.
+fn merge_defaults(cli: &mut Cli, matches: &clap::ArgMatches, defaults: &config::Defaults) {
+    use clap::parser::ValueSource;
 
     let src = |id: &str| matches.value_source(id);
     let is_default = |id: &str| src(id) == Some(ValueSource::DefaultValue);
@@ -400,7 +411,41 @@ fn apply_config_defaults(
         }
     }
 
-    Ok(defaults)
+    // Repeatable list flags accumulate: config values come first so CLI
+    // additions are layered on top rather than replacing them.
+    // Presets are additionally deduplicated: naming an always-on preset again
+    // on the command line would otherwise mount the same paths twice, which
+    // the container engines reject as a duplicate mount point.
+    if let Some(ref presets) = defaults.preset {
+        let mut merged = presets.clone();
+        merged.append(&mut cli.preset);
+        let mut seen = std::collections::HashSet::new();
+        merged.retain(|p| seen.insert(p.clone()));
+        cli.preset = merged;
+    }
+    if let Some(ref env) = defaults.env {
+        let mut merged = env.clone();
+        merged.append(&mut cli.env);
+        cli.env = merged;
+    }
+
+    // Boolean flags can only be turned on from the command line, so a config
+    // value of true is simply OR-ed in.
+    cli.no_cache |= defaults.no_cache.unwrap_or(false);
+    cli.verbose |= defaults.verbose.unwrap_or(false);
+    cli.quiet |= defaults.quiet.unwrap_or(false);
+    cli.preserve_container |= defaults.preserve_container.unwrap_or(false);
+}
+
+/// Place configured harness arguments ahead of the arguments the user passed
+/// after `--`, so a trailing prompt stays trailing.
+fn prepend_harness_args(extra: &[String], container_args: Vec<String>) -> Vec<String> {
+    if extra.is_empty() {
+        return container_args;
+    }
+    let mut merged = extra.to_vec();
+    merged.extend(container_args);
+    merged
 }
 
 /// Dispatch a `config` subcommand.
@@ -593,6 +638,127 @@ mod tests {
         assert!(s.contains("/home/user/foo.rs"));
         assert!(s.contains("/home/user/bar.rs"));
         assert!(s.contains("not be persisted"));
+    }
+
+    /// Build a `Cli` plus its `ArgMatches` the same way `run()` does.
+    fn parse_cli(argv: &[&str]) -> (Cli, clap::ArgMatches) {
+        let matches = Cli::command().try_get_matches_from(argv).unwrap();
+        let cli = Cli::from_arg_matches(&matches).unwrap();
+        (cli, matches)
+    }
+
+    #[test]
+    fn merge_defaults_fills_unset_scalars() {
+        let (mut cli, matches) = parse_cli(&["orka"]);
+        let defaults = config::Defaults {
+            engine: Some(cli::Backend::Podman),
+            harness: Some(cli::Harness::Claude),
+            harness_version: Some("1.2.3".to_string()),
+            ..Default::default()
+        };
+        merge_defaults(&mut cli, &matches, &defaults);
+        assert_eq!(cli.engine, cli::Backend::Podman);
+        assert_eq!(cli.harness, cli::Harness::Claude);
+        assert_eq!(cli.harness_version.as_deref(), Some("1.2.3"));
+    }
+
+    #[test]
+    fn merge_defaults_does_not_override_explicit_flags() {
+        let (mut cli, matches) = parse_cli(&[
+            "orka",
+            "--engine",
+            "docker",
+            "--harness",
+            "pi",
+            "-v",
+            "9.9.9",
+        ]);
+        let defaults = config::Defaults {
+            engine: Some(cli::Backend::Podman),
+            harness: Some(cli::Harness::Claude),
+            harness_version: Some("1.2.3".to_string()),
+            ..Default::default()
+        };
+        merge_defaults(&mut cli, &matches, &defaults);
+        assert_eq!(cli.engine, cli::Backend::Docker);
+        assert_eq!(cli.harness, cli::Harness::Pi);
+        assert_eq!(cli.harness_version.as_deref(), Some("9.9.9"));
+    }
+
+    #[test]
+    fn merge_defaults_appends_list_values_before_cli_ones() {
+        let (mut cli, matches) = parse_cli(&["orka", "--preset", "go", "--env", "B=2"]);
+        let defaults = config::Defaults {
+            preset: Some(vec!["rust".to_string()]),
+            env: Some(vec!["A=1".to_string()]),
+            ..Default::default()
+        };
+        merge_defaults(&mut cli, &matches, &defaults);
+        assert_eq!(cli.preset, vec!["rust".to_string(), "go".to_string()]);
+        assert_eq!(cli.env, vec!["A=1".to_string(), "B=2".to_string()]);
+    }
+
+    /// Naming an always-on preset again must not duplicate its mounts.
+    #[test]
+    fn merge_defaults_deduplicates_presets() {
+        let (mut cli, matches) = parse_cli(&["orka", "--preset", "jira", "--preset", "rust"]);
+        let defaults = config::Defaults {
+            preset: Some(vec!["jira".to_string()]),
+            ..Default::default()
+        };
+        merge_defaults(&mut cli, &matches, &defaults);
+        assert_eq!(cli.preset, vec!["jira".to_string(), "rust".to_string()]);
+    }
+
+    #[test]
+    fn merge_defaults_enables_boolean_flags() {
+        let (mut cli, matches) = parse_cli(&["orka"]);
+        let defaults = config::Defaults {
+            no_cache: Some(true),
+            verbose: Some(true),
+            quiet: Some(true),
+            preserve_container: Some(true),
+            ..Default::default()
+        };
+        merge_defaults(&mut cli, &matches, &defaults);
+        assert!(cli.no_cache && cli.verbose && cli.quiet && cli.preserve_container);
+    }
+
+    /// A `false` in the config must not undo a flag given on the command line.
+    #[test]
+    fn merge_defaults_false_does_not_clear_cli_flag() {
+        let (mut cli, matches) = parse_cli(&["orka", "--verbose"]);
+        let defaults = config::Defaults {
+            verbose: Some(false),
+            ..Default::default()
+        };
+        merge_defaults(&mut cli, &matches, &defaults);
+        assert!(cli.verbose);
+    }
+
+    #[test]
+    fn harness_args_precede_the_user_prompt() {
+        let extra = vec!["--dangerously-skip-permissions".to_string()];
+        let merged = prepend_harness_args(&extra, vec!["fix the build".to_string()]);
+        assert_eq!(
+            merged,
+            vec![
+                "--dangerously-skip-permissions".to_string(),
+                "fix the build".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn harness_args_apply_without_user_args() {
+        let extra = vec!["--dangerously-skip-permissions".to_string()];
+        assert_eq!(prepend_harness_args(&extra, vec![]), extra);
+    }
+
+    #[test]
+    fn harness_args_empty_leaves_container_args_untouched() {
+        let args = vec!["do the thing".to_string()];
+        assert_eq!(prepend_harness_args(&[], args.clone()), args);
     }
 
     #[test]

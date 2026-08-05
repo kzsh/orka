@@ -637,7 +637,11 @@ mod tests {
         fs::create_dir_all(&dist).unwrap();
         fs::create_dir_all(pkg.join("node_modules/some-dep")).unwrap();
 
-        fs::write(dist.join("index.js"), format!("{shebang}\nconsole.log(1);\n")).unwrap();
+        fs::write(
+            dist.join("index.js"),
+            format!("{shebang}\nconsole.log(1);\n"),
+        )
+        .unwrap();
 
         let launcher = bin.join("pi");
         std::os::unix::fs::symlink(

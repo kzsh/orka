@@ -94,24 +94,36 @@ mod tests {
 
     #[test]
     fn tilde_prefix() {
-        assert_eq!(expand_tilde_with("~/.cargo", "/home/user"), "/home/user/.cargo");
+        assert_eq!(
+            expand_tilde_with("~/.cargo", "/home/user"),
+            "/home/user/.cargo"
+        );
     }
 
     #[test]
     fn tilde_not_prefix_unchanged() {
-        assert_eq!(expand_tilde_with("/usr/local/bin", "/home/user"), "/usr/local/bin");
+        assert_eq!(
+            expand_tilde_with("/usr/local/bin", "/home/user"),
+            "/usr/local/bin"
+        );
     }
 
     #[test]
     fn expand_dollar_var() {
         let lookup = lookup_from(&[("_ORKA_TEST_VAR", "hello")]);
-        assert_eq!(expand_shell_vars("$_ORKA_TEST_VAR/world", &lookup), "hello/world");
+        assert_eq!(
+            expand_shell_vars("$_ORKA_TEST_VAR/world", &lookup),
+            "hello/world"
+        );
     }
 
     #[test]
     fn expand_braced_var() {
         let lookup = lookup_from(&[("_ORKA_TEST_BRACED", "hi")]);
-        assert_eq!(expand_shell_vars("${_ORKA_TEST_BRACED}/there", &lookup), "hi/there");
+        assert_eq!(
+            expand_shell_vars("${_ORKA_TEST_BRACED}/there", &lookup),
+            "hi/there"
+        );
     }
 
     #[test]

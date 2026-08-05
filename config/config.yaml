@@ -14,7 +14,31 @@
 #   pi-path         - absolute path to the pi binary    (bubblewrap backend only)
 #   claude-path     - absolute path to the claude binary (bubblewrap backend only)
 #   codex-path      - absolute path to the codex binary  (bubblewrap backend only)
+#   harness-args    - extra arguments per harness, forwarded to the agent ahead of
+#                     anything passed after `--` on the command line
+#   preset          - presets applied to every run (same as repeating --preset)
+#   env             - KEY=VALUE pairs injected into every run (same as --env)
+#   no-cache        - always rebuild the image            (true | false)
+#   verbose         - always pass VERBOSE=1 into the container (true | false)
+#   quiet           - always suppress image build output  (true | false)
+#   preserve-container - keep containers after they exit  (true | false)
 
 # engine: podman
 # harness: pi
 # harness-version: latest
+
+# harness-args:
+#   claude:
+#     - --dangerously-skip-permissions
+#   codex:
+#     - --dangerously-bypass-approvals-and-sandbox
+#   pi: []
+
+# preset:
+#   - rust
+# env:
+#   - RUST_LOG=debug
+# no-cache: false
+# verbose: false
+# quiet: false
+# preserve-container: false

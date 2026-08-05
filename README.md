@@ -64,8 +64,24 @@ mkdir -p ~/.config/orka
 cp config/config.yaml ~/.config/orka/config.yaml
 ```
 
-`config.yaml` supports: `engine`, `runtime`, `harness`, `no_browser`. Any flag
-supplied on the command line takes precedence over the config file value.
+`config.yaml` keys: `engine`, `harness`, `harness-version`, `pi-path`,
+`claude-path`, `codex-path`, `harness-args`, `preset`, `env`, `no-cache`,
+`verbose`, `quiet`, `preserve-container`. Scalar values are overridden by the
+matching command-line flag; `preset` and `env` lists are appended to by the
+command line, and boolean flags can only be turned on.
+
+`harness-args` sets agent flags per harness so they need not be typed on every
+run. They are inserted before any arguments passed after `--`:
+
+```yaml
+harness: claude
+harness-args:
+  claude:
+    - --dangerously-skip-permissions
+```
+
+With the above, `orka -- "fix the build"` runs
+`claude --dangerously-skip-permissions "fix the build"` inside the container.
 
 ### Presets
 

@@ -28,6 +28,45 @@ pub struct Defaults {
     pub claude_path: Option<String>,
     /// Explicit path to the codex binary (bwrap backend only).
     pub codex_path: Option<String>,
+    /// Extra arguments appended to the harness command line, per harness.
+    /// These land ahead of anything the user passes after `--`, so an explicit
+    /// flag still wins for harnesses that honour last-one-wins.
+    pub harness_args: Option<HarnessArgs>,
+    /// Presets applied on every run, as if passed with `--preset`.
+    pub preset: Option<Vec<String>>,
+    /// Env vars injected on every run, as if passed with `--env`.
+    pub env: Option<Vec<String>>,
+    /// Always rebuild the image, as if `--no-cache` were passed.
+    pub no_cache: Option<bool>,
+    /// Always pass `VERBOSE=1` into the container, as if `--verbose`.
+    pub verbose: Option<bool>,
+    /// Always suppress build output, as if `--quiet`.
+    pub quiet: Option<bool>,
+    /// Always keep the container after exit, as if `--preserve-container`.
+    pub preserve_container: Option<bool>,
+}
+
+/// Per-harness extra CLI arguments.
+#[derive(Debug, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct HarnessArgs {
+    #[serde(default)]
+    pub pi: Vec<String>,
+    #[serde(default)]
+    pub claude: Vec<String>,
+    #[serde(default)]
+    pub codex: Vec<String>,
+}
+
+impl HarnessArgs {
+    /// Arguments configured for `harness`.
+    pub fn for_harness(&self, harness: Harness) -> &[String] {
+        match harness {
+            Harness::Pi => &self.pi,
+            Harness::Claude => &self.claude,
+            Harness::Codex => &self.codex,
+        }
+    }
 }
 
 /// Returns the canonical path to `config.yaml`, honouring `$XDG_CONFIG_HOME`.
@@ -130,7 +169,9 @@ mod tests {
 
     /// Parse via the production entry point so tests cover the behaviour orka
     /// actually has, not the raw YAML crate's.
-    fn try_parse<T: serde::de::DeserializeOwned + Default + 'static>(yaml: &str) -> Result<T, String> {
+    fn try_parse<T: serde::de::DeserializeOwned + Default + 'static>(
+        yaml: &str,
+    ) -> Result<T, String> {
         parse(yaml, Path::new("<test>"))
     }
 
@@ -263,6 +304,55 @@ environments:
         assert_eq!(d.pi_path.as_deref(), Some("/opt/pi/bin/pi"));
         assert_eq!(d.claude_path.as_deref(), Some("/opt/claude/bin/claude"));
         assert_eq!(d.codex_path.as_deref(), Some("/opt/codex/bin/codex"));
+    }
+
+    #[test]
+    fn parse_harness_args_per_harness() {
+        let yaml = concat!(
+            "harness-args:\n",
+            "  claude:\n",
+            "    - --dangerously-skip-permissions\n",
+            "  codex:\n",
+            "    - --dangerously-bypass-approvals-and-sandbox\n",
+        );
+        let d: Defaults = try_parse(yaml).unwrap();
+        let args = d.harness_args.unwrap();
+        assert_eq!(
+            args.for_harness(Harness::Claude),
+            ["--dangerously-skip-permissions"]
+        );
+        assert_eq!(
+            args.for_harness(Harness::Codex),
+            ["--dangerously-bypass-approvals-and-sandbox"]
+        );
+        assert!(args.for_harness(Harness::Pi).is_empty());
+    }
+
+    #[test]
+    fn unknown_harness_in_harness_args_is_rejected() {
+        assert!(try_parse::<Defaults>("harness-args:\n  gemini:\n    - --yolo\n").is_err());
+    }
+
+    #[test]
+    fn parse_flag_and_list_defaults() {
+        let yaml = concat!(
+            "preset:\n  - rust\n  - go\n",
+            "env:\n  - RUST_LOG=debug\n",
+            "no-cache: true\n",
+            "verbose: true\n",
+            "quiet: false\n",
+            "preserve-container: true\n",
+        );
+        let d: Defaults = try_parse(yaml).unwrap();
+        assert_eq!(
+            d.preset.as_deref(),
+            Some(&["rust".to_string(), "go".to_string()][..])
+        );
+        assert_eq!(d.env.as_deref(), Some(&["RUST_LOG=debug".to_string()][..]));
+        assert_eq!(d.no_cache, Some(true));
+        assert_eq!(d.verbose, Some(true));
+        assert_eq!(d.quiet, Some(false));
+        assert_eq!(d.preserve_container, Some(true));
     }
 
     /// snake_case is not the documented format and must not silently work.
