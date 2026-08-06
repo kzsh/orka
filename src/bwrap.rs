@@ -28,9 +28,10 @@ pub fn run(cfg: &RunConfig) -> Result<(), String> {
             Harness::Claude => "claude",
             Harness::Codex => "codex",
         };
-        println!("=====================");
-        println!("Orka: {label} (bwrap)");
-        println!("=====================");
+        println!(
+            "{}",
+            crate::docker::banner(&format!("{label} (bwrap)"), &cfg.presets)
+        );
     }
 
     exec(&cmd)
@@ -443,6 +444,7 @@ mod tests {
             volumes: vec![],
             shadow_volumes: vec![],
             env_vars: vec![],
+            presets: vec![],
             workdir: "/work".to_string(),
             container_args: vec![],
         };

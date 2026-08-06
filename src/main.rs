@@ -247,6 +247,7 @@ fn run() -> Result<(), String> {
         volumes,
         shadow_volumes,
         env_vars,
+        presets: cli.preset.clone(),
         workdir,
         container_args,
     };

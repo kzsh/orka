@@ -41,11 +41,27 @@ pub struct RunConfig {
     pub shadow_volumes: Vec<(String, String)>,
     /// Resolved `(key, value)` environment variable pairs.
     pub env_vars: Vec<(String, String)>,
+    /// Names of the presets applied to this run, in the order they were applied.
+    pub presets: Vec<String>,
     /// Explicit path to the agent binary.  Used only by the bwrap backend;
     /// ignored by all container-engine paths.
     pub harness_binary: Option<String>,
     pub workdir: String,
     pub container_args: Vec<String>,
+}
+
+/// Startup banner printed before the image build and container run.
+///
+/// `label` identifies the harness (and backend, for bwrap).  Presets are listed
+/// only when at least one is active, including always-on ones from config.yaml.
+pub fn banner(label: &str, presets: &[String]) -> String {
+    const RULE: &str = "=====================";
+    let mut out = format!("{RULE}\nOrka: {label}\n");
+    if !presets.is_empty() {
+        out.push_str(&format!("Presets: {}\n", presets.join(", ")));
+    }
+    out.push_str(RULE);
+    out
 }
 
 /// Write all embedded Dockerfiles and entrypoints into a fresh temp directory
@@ -200,9 +216,7 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
             Harness::Claude => "claude",
             Harness::Codex => "codex",
         };
-        println!("=====================");
-        println!("Orka: {harness_label}");
-        println!("=====================");
+        println!("{}", banner(harness_label, &cfg.presets));
     }
 
     if let Some(ref cmd) = base_build {
@@ -722,6 +736,23 @@ mod tests {
         assert!(gid < u32::MAX);
     }
 
+    #[test]
+    fn banner_without_presets_omits_the_preset_line() {
+        assert_eq!(
+            banner("pi", &[]),
+            "=====================\nOrka: pi\n====================="
+        );
+    }
+
+    #[test]
+    fn banner_lists_active_presets_in_order() {
+        let presets = vec!["jira".to_string(), "rust".to_string()];
+        assert_eq!(
+            banner("pi (bwrap)", &presets),
+            "=====================\nOrka: pi (bwrap)\nPresets: jira, rust\n====================="
+        );
+    }
+
     fn make_cfg(harness: Harness) -> RunConfig {
         RunConfig {
             engine_binary: "docker".to_string(),
@@ -736,6 +767,7 @@ mod tests {
             volumes: vec![],
             shadow_volumes: vec![],
             env_vars: vec![],
+            presets: vec![],
             harness_binary: None,
             workdir: "/work".to_string(),
             container_args: vec![],
