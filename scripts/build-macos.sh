@@ -8,8 +8,10 @@
 #
 # Requirements: see mac-cargo.sh.
 #
+# The remote host comes from $ORKA_BUILD_HOST or --host; there is no default.
+#
 # Usage:
-#   ./scripts/build-macos.sh
+#   ORKA_BUILD_HOST=mini.local ./scripts/build-macos.sh
 #   ./scripts/build-macos.sh --host mini.local
 #   ./scripts/build-macos.sh --clean          # discard the remote build dir first
 #   DIST=out ./scripts/build-macos.sh
@@ -19,7 +21,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR/.."
 
-HOST="${ORKA_BUILD_HOST:-mini.local}"
+HOST="${ORKA_BUILD_HOST:-}"
 REMOTE_DIR="${ORKA_BUILD_DIR:-/tmp/orka-build}"
 DIST="${DIST:-dist}"
 TARGET="aarch64-apple-darwin"
@@ -29,8 +31,8 @@ usage() {
     cat <<'EOF'
 Usage: build-macos.sh [OPTIONS]
 
-  --host HOST      Remote host to build on (default: mini.local,
-                   override with $ORKA_BUILD_HOST)
+  --host HOST      Remote host to build on (required, or set
+                   $ORKA_BUILD_HOST)
   --dir PATH       Remote build directory (default: /tmp/orka-build,
                    override with $ORKA_BUILD_DIR)
   --target TRIPLE  Rust target triple (default: aarch64-apple-darwin)
@@ -68,6 +70,12 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+[[ -n "$HOST" ]] || {
+    echo "error: no remote host; set \$ORKA_BUILD_HOST or pass --host" >&2
+    usage >&2
+    exit 2
+}
 
 if [[ "$CLEAN" -eq 1 ]]; then
     echo "==> removing $HOST:$REMOTE_DIR"

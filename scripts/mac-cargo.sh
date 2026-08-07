@@ -11,21 +11,23 @@
 #   - ssh access to the remote host (key-based)
 #   - a Rust toolchain on the remote host, installed via rustup
 #
+# The remote host comes from $ORKA_BUILD_HOST or --host; there is no default.
+#
 # Usage:
-#   ./scripts/mac-cargo.sh test
+#   ORKA_BUILD_HOST=mini.local ./scripts/mac-cargo.sh test
 #   ./scripts/mac-cargo.sh build --release --target aarch64-apple-darwin
 #   ./scripts/mac-cargo.sh run -- --engine container --dry-run
 #   ./scripts/mac-cargo.sh --host mini.local clippy --all-targets
 #
 # The build directory is never removed; delete it by hand when you want a cold
 # build:
-#   ssh mini.local 'rm -rf /tmp/orka-build'
+#   ssh "$ORKA_BUILD_HOST" 'rm -rf /tmp/orka-build'
 
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-HOST="${ORKA_BUILD_HOST:-mini.local}"
+HOST="${ORKA_BUILD_HOST:-}"
 REMOTE_DIR="${ORKA_BUILD_DIR:-/tmp/orka-build}"
 CONTAINER_START=1
 
@@ -33,8 +35,8 @@ usage() {
     cat <<'EOF'
 Usage: mac-cargo.sh [OPTIONS] <cargo args...>
 
-  --host HOST   Remote host to build on (default: mini.local,
-                override with $ORKA_BUILD_HOST)
+  --host HOST   Remote host to build on (required, or set
+                $ORKA_BUILD_HOST)
   --dir PATH    Remote build directory (default: /tmp/orka-build,
                 override with $ORKA_BUILD_DIR)
   --no-container-start
@@ -69,6 +71,12 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+[[ -n "$HOST" ]] || {
+    echo "error: no remote host; set \$ORKA_BUILD_HOST or pass --host" >&2
+    usage >&2
+    exit 2
+}
 
 [[ $# -gt 0 ]] || {
     echo "error: no cargo arguments given" >&2
