@@ -2,6 +2,17 @@ FROM debian:bookworm-slim
 
 ARG BUN_VERSION=1.3.14
 
+# Revision of the Chromium build Playwright publishes, used on arm64 only.
+# Current values are listed in playwright-core/browsers.json.
+ARG PLAYWRIGHT_CHROMIUM_REVISION=1237
+
+# Set by BuildKit to the architecture the image is being built for, which is not
+# the builder's own architecture when cross-building with --platform.  Layers
+# below fall back to `dpkg --print-architecture`, which uses the same vocabulary
+# (amd64, arm64) and reports the image's architecture, for the legacy builder
+# where this argument is unset.
+ARG TARGETARCH
+
 ENV DEBIAN_FRONTEND=noninteractive
 
 # This layer rarely changes and is built as a separate base image so that a
@@ -36,6 +47,7 @@ RUN apt-get update && apt-get install -y \
   libcups2 \
   libdbus-1-3 \
   libdrm2 \
+  libexpat1 \
   libgbm1 \
   libgdk-pixbuf-2.0-0 \
   libglib2.0-0 \
@@ -44,6 +56,7 @@ RUN apt-get update && apt-get install -y \
   libnss3 \
   libpango-1.0-0 \
   libpangocairo-1.0-0 \
+  libudev1 \
   libwayland-client0 \
   libx11-6 \
   libx11-xcb1 \
@@ -84,10 +97,10 @@ RUN apt-get update && apt-get install -y \
 # Install bun from the official GitHub release.
 # bun can also run as node, npm, and npx when invoked under those names.
 RUN set -eux && \
-    ARCH=$(uname -m) && \
+    ARCH="${TARGETARCH:-$(dpkg --print-architecture)}" && \
     case "$ARCH" in \
-      x86_64)  TARGET="bun-linux-x64" ;; \
-      aarch64) TARGET="bun-linux-aarch64" ;; \
+      amd64) TARGET="bun-linux-x64" ;; \
+      arm64) TARGET="bun-linux-aarch64" ;; \
       *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; \
     esac && \
     curl -fsSL "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/${TARGET}.zip" \
@@ -104,10 +117,10 @@ RUN set -eux && \
 # Download the agent-browser binary from GitHub releases and install it.
 # Uses the musl variant for maximum portability inside the container.
 RUN set -eux && \
-    ARCH=$(uname -m) && \
+    ARCH="${TARGETARCH:-$(dpkg --print-architecture)}" && \
     case "$ARCH" in \
-      x86_64)  TARGET="linux-musl-x64" ;; \
-      aarch64) TARGET="linux-musl-arm64" ;; \
+      amd64) TARGET="linux-musl-x64" ;; \
+      arm64) TARGET="linux-musl-arm64" ;; \
       *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; \
     esac && \
     TAG=$(curl -fsSL https://api.github.com/repos/vercel-labs/agent-browser/releases/latest \
@@ -122,13 +135,35 @@ RUN set -eux && \
 # /root, so install under a throwaway HOME and relocate the result to a stable,
 # world-readable path.  AGENT_BROWSER_EXECUTABLE_PATH then points every runtime
 # user at that binary regardless of their own home directory.
+#
+# Chrome for Testing has no Linux arm64 builds, so arm64 uses the Chromium build
+# Playwright publishes instead.  Its runtime libraries are already in the apt
+# layer above.  Either way the browser ends up under /opt/browser-cache with a
+# `chrome` symlink at a fixed path.
 RUN set -eux && \
     mkdir -p /opt/browser-cache && \
-    HOME=/tmp/agent-browser-install agent-browser install && \
-    mv /tmp/agent-browser-install/.agent-browser/browsers/* /opt/browser-cache/ && \
-    rm -rf /tmp/agent-browser-install && \
+    ARCH="${TARGETARCH:-$(dpkg --print-architecture)}" && \
+    case "$ARCH" in \
+      amd64) \
+        HOME=/tmp/agent-browser-install agent-browser install && \
+        mv /tmp/agent-browser-install/.agent-browser/browsers/* /opt/browser-cache/ && \
+        rm -rf /tmp/agent-browser-install \
+        ;; \
+      arm64) \
+        curl -fsSL "https://cdn.playwright.dev/dbazure/download/playwright/builds/chromium/${PLAYWRIGHT_CHROMIUM_REVISION}/chromium-linux-arm64.zip" \
+          -o /tmp/chromium.zip && \
+        unzip -q /tmp/chromium.zip -d /opt/browser-cache && \
+        rm -f /tmp/chromium.zip \
+        ;; \
+      *) echo "No Chromium build available for $ARCH" >&2; exit 1 ;; \
+    esac && \
     CHROME=$(find /opt/browser-cache -maxdepth 2 -type f -name chrome | head -n 1) && \
     test -n "$CHROME" && \
+    chmod a+x "$CHROME" && \
+    for helper in chrome_sandbox chrome_crashpad_handler; do \
+      [ -f "$(dirname "$CHROME")/$helper" ] && chmod a+x "$(dirname "$CHROME")/$helper"; \
+      true; \
+    done && \
     ln -s "$CHROME" /opt/browser-cache/chrome && \
     chmod -R a+rX /opt/browser-cache
 

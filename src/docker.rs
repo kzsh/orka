@@ -189,10 +189,12 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
         main_build = None;
     }
 
+    let caps = EngineCapabilities::detect(&cfg.engine_binary, cfg.backend);
+
     let run_cmd = match cfg.harness {
-        Harness::Pi => run_pi_command_args(&main_ref, uid, gid, cfg)?,
-        Harness::Claude => run_claude_command_args(&main_ref, uid, gid, cfg)?,
-        Harness::Codex => run_codex_command_args(&main_ref, uid, gid, cfg)?,
+        Harness::Pi => run_pi_command_args(&main_ref, uid, gid, caps, cfg)?,
+        Harness::Claude => run_claude_command_args(&main_ref, uid, gid, caps, cfg)?,
+        Harness::Codex => run_codex_command_args(&main_ref, uid, gid, caps, cfg)?,
     };
 
     if cfg.dry_run {
@@ -295,6 +297,7 @@ fn run_pi_command_args(
     main_ref: &str,
     uid: u32,
     gid: u32,
+    caps: EngineCapabilities,
     cfg: &RunConfig,
 ) -> Result<Vec<String>, String> {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
@@ -310,7 +313,7 @@ fn run_pi_command_args(
     if !cfg.preserve_container {
         cmd.push(s("--rm"));
     }
-    push_isolation_args(&mut cmd, uid, gid, cfg);
+    push_isolation_args(&mut cmd, uid, gid, caps, cfg);
 
     // Pi config/data dir is always mounted so settings persist across runs.
     cmd.push(s("--volume"));
@@ -390,6 +393,7 @@ fn run_claude_command_args(
     main_ref: &str,
     uid: u32,
     gid: u32,
+    caps: EngineCapabilities,
     cfg: &RunConfig,
 ) -> Result<Vec<String>, String> {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
@@ -414,7 +418,7 @@ fn run_claude_command_args(
     if !cfg.preserve_container {
         cmd.push(s("--rm"));
     }
-    push_isolation_args(&mut cmd, uid, gid, cfg);
+    push_isolation_args(&mut cmd, uid, gid, caps, cfg);
 
     // Claude config/data dir is always mounted so conversation history persists.
     cmd.push(s("--volume"));
@@ -494,6 +498,7 @@ fn run_codex_command_args(
     main_ref: &str,
     uid: u32,
     gid: u32,
+    caps: EngineCapabilities,
     cfg: &RunConfig,
 ) -> Result<Vec<String>, String> {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
@@ -509,7 +514,7 @@ fn run_codex_command_args(
     if !cfg.preserve_container {
         cmd.push(s("--rm"));
     }
-    push_isolation_args(&mut cmd, uid, gid, cfg);
+    push_isolation_args(&mut cmd, uid, gid, caps, cfg);
 
     // Codex config/data dir is always mounted so settings and history persist.
     cmd.push(s("--volume"));
@@ -545,10 +550,53 @@ fn run_codex_command_args(
 // Execution helpers
 // ---------------------------------------------------------------------------
 
+/// Sandbox flags whose availability varies between engines and, for Apple's
+/// `container`, between versions of the same engine.  Unknown flags are a fatal
+/// parse error there, so they are probed rather than assumed.
+#[derive(Clone, Copy, Debug)]
+struct EngineCapabilities {
+    cap_drop: bool,
+}
+
+impl EngineCapabilities {
+    /// Docker and Podman have supported `--cap-drop` for their entire history.
+    /// Apple's `container` gained it in 0.12.0, so ask the binary itself.
+    fn detect(engine: &str, backend: Backend) -> Self {
+        if !backend.is_apple_container() {
+            return Self { cap_drop: true };
+        }
+        Self {
+            cap_drop: engine_run_help_mentions(engine, "--cap-drop"),
+        }
+    }
+}
+
+/// Returns true when `<engine> run --help` lists `flag`.  A missing binary or a
+/// failed invocation reports false, which drops the flag: an over-permissive
+/// container beats one that refuses to start.
+fn engine_run_help_mentions(engine: &str, flag: &str) -> bool {
+    Command::new(engine)
+        .args(["run", "--help"])
+        .output()
+        .map(|out| {
+            String::from_utf8_lossy(&out.stdout).contains(flag)
+                || String::from_utf8_lossy(&out.stderr).contains(flag)
+        })
+        .unwrap_or(false)
+}
+
 /// Push the sandbox and user-identity flags shared by every harness run
 /// command.
-fn push_isolation_args(cmd: &mut Vec<String>, uid: u32, gid: u32, cfg: &RunConfig) {
-    cmd.push(s("--cap-drop=ALL"));
+fn push_isolation_args(
+    cmd: &mut Vec<String>,
+    uid: u32,
+    gid: u32,
+    caps: EngineCapabilities,
+    cfg: &RunConfig,
+) {
+    if caps.cap_drop {
+        cmd.push(s("--cap-drop=ALL"));
+    }
 
     // Apple's `container` has no --security-opt and rejects unknown flags.
     if !cfg.backend.is_apple_container() {
@@ -837,7 +885,7 @@ mod tests {
         let mut cfg = make_cfg(Harness::Pi);
         cfg.engine_binary = "podman".to_string();
         cfg.backend = Backend::Podman;
-        let cmd = run_pi_command_args("orka:latest", 1000, 1000, &cfg).unwrap();
+        let cmd = run_pi_command_args("orka:latest", 1000, 1000, ALL_CAPS, &cfg).unwrap();
         assert!(cmd.contains(&"--userns=keep-id".to_string()));
     }
 
@@ -848,13 +896,24 @@ mod tests {
         std::fs::create_dir_all(&pi_dir).unwrap();
 
         let cfg = make_cfg(Harness::Pi);
-        let cmd = run_pi_command_args("orka:latest", 1000, 1000, &cfg).unwrap();
+        let cmd = run_pi_command_args("orka:latest", 1000, 1000, ALL_CAPS, &cfg).unwrap();
         assert!(!cmd.contains(&"--userns=keep-id".to_string()));
     }
+
+    /// An engine that accepts every optional sandbox flag.
+    const ALL_CAPS: EngineCapabilities = EngineCapabilities { cap_drop: true };
 
     /// Building a run command for `harness` under `backend`, with the
     /// per-harness home directories pre-created so the builders succeed.
     fn run_args_for(harness: Harness, backend: Backend) -> Vec<String> {
+        run_args_with_caps(harness, backend, ALL_CAPS)
+    }
+
+    fn run_args_with_caps(
+        harness: Harness,
+        backend: Backend,
+        caps: EngineCapabilities,
+    ) -> Vec<String> {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
         for sub in [".pi", ".claude", ".codex"] {
             std::fs::create_dir_all(format!("{home}/{sub}")).unwrap();
@@ -865,9 +924,9 @@ mod tests {
         cfg.engine_binary = backend.binary().to_string();
 
         match harness {
-            Harness::Pi => run_pi_command_args("orka:latest", 1000, 1000, &cfg),
-            Harness::Claude => run_claude_command_args("orka-claude:latest", 1000, 1000, &cfg),
-            Harness::Codex => run_codex_command_args("orka-codex:latest", 1000, 1000, &cfg),
+            Harness::Pi => run_pi_command_args("orka:latest", 1000, 1000, caps, &cfg),
+            Harness::Claude => run_claude_command_args("orka-claude:latest", 1000, 1000, caps, &cfg),
+            Harness::Codex => run_codex_command_args("orka-codex:latest", 1000, 1000, caps, &cfg),
         }
         .unwrap()
     }
@@ -916,7 +975,7 @@ mod tests {
         cfg.engine_binary = "podman".to_string();
         cfg.container_args = vec!["--help".to_string()];
 
-        let cmd = run_pi_command_args("orka:latest", 1000, 1000, &cfg).unwrap();
+        let cmd = run_pi_command_args("orka:latest", 1000, 1000, ALL_CAPS, &cfg).unwrap();
         let img = cmd.iter().position(|a| a == "orka:latest").unwrap();
         assert_eq!(cmd[img + 1], "--help");
         assert_eq!(cmd[img - 1], cfg.workdir);
@@ -934,7 +993,8 @@ mod tests {
 
     /// `container` rejects unknown flags outright, and `--security-opt` is not
     /// part of its surface.  Every harness must omit it while still dropping
-    /// capabilities and pinning the user.
+    /// capabilities, on the versions that accept `--cap-drop`, and pinning the
+    /// user.
     #[test]
     fn apple_container_run_omits_security_opt_for_every_harness() {
         for harness in [Harness::Pi, Harness::Claude, Harness::Codex] {
@@ -955,6 +1015,40 @@ mod tests {
                 .unwrap_or_else(|| panic!("container command must pass --user: {cmd:?}"));
             assert_eq!(cmd[idx + 1], "1000:1000");
         }
+    }
+
+    /// `container` only learned `--cap-drop` in 0.12.0 and treats unknown flags
+    /// as a fatal parse error, so older versions must get a command without it.
+    #[test]
+    fn run_omits_cap_drop_when_engine_lacks_it() {
+        let caps = EngineCapabilities { cap_drop: false };
+        for harness in [Harness::Pi, Harness::Claude, Harness::Codex] {
+            let cmd = run_args_with_caps(harness, Backend::Container, caps);
+            assert!(
+                !cmd.iter().any(|a| a.starts_with("--cap-drop")),
+                "command must omit --cap-drop when unsupported: {cmd:?}"
+            );
+            let idx = cmd
+                .iter()
+                .position(|a| a == "--user")
+                .unwrap_or_else(|| panic!("container command must pass --user: {cmd:?}"));
+            assert_eq!(cmd[idx + 1], "1000:1000");
+        }
+    }
+
+    /// Docker and Podman are never probed; the flag is assumed present.
+    #[test]
+    fn cap_drop_detection_assumes_support_for_docker_and_podman() {
+        for backend in [Backend::Docker, Backend::Podman] {
+            assert!(EngineCapabilities::detect("orka-no-such-engine", backend).cap_drop);
+        }
+    }
+
+    /// A `container` binary that cannot be executed reports no support, which
+    /// yields a runnable command rather than one rejected at parse time.
+    #[test]
+    fn cap_drop_detection_reports_false_for_missing_apple_container() {
+        assert!(!EngineCapabilities::detect("orka-no-such-engine", Backend::Container).cap_drop);
     }
 
     /// Docker and Podman keep `--security-opt=no-new-privileges`; only the
@@ -1013,7 +1107,7 @@ mod tests {
 
         let mut cfg = make_cfg(Harness::Pi);
         cfg.shadow_volumes = vec![("/tmp/empty".to_string(), "/project/.env".to_string())];
-        let cmd = run_pi_command_args("orka:latest", 1000, 1000, &cfg).unwrap();
+        let cmd = run_pi_command_args("orka:latest", 1000, 1000, ALL_CAPS, &cfg).unwrap();
         let joined = cmd.join(" ");
         assert!(joined.contains("/tmp/empty:/project/.env:ro"));
         // Regular volumes must not get :ro.

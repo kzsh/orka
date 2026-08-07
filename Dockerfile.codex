@@ -9,14 +9,19 @@ ARG USER_GID=1000
 ARG UNAME=appuser
 ARG VERSION=latest
 
+# Set by BuildKit to the architecture the image is being built for; falls back to
+# `dpkg --print-architecture`, which uses the same vocabulary, on the legacy
+# builder where it is unset.
+ARG TARGETARCH
+
 # Install the codex binary as root before switching to the unprivileged user.
 # We download the pre-built musl binary directly from GitHub releases — no npm
 # or node required.  jq is available from the base image.
 RUN set -eux && \
-    ARCH=$(uname -m) && \
+    ARCH="${TARGETARCH:-$(dpkg --print-architecture)}" && \
     case "$ARCH" in \
-      x86_64)  TARGET="x86_64-unknown-linux-musl" ;; \
-      aarch64) TARGET="aarch64-unknown-linux-musl" ;; \
+      amd64) TARGET="x86_64-unknown-linux-musl" ;; \
+      arm64) TARGET="aarch64-unknown-linux-musl" ;; \
       *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; \
     esac && \
     if [ "$VERSION" = "latest" ]; then \
