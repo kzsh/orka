@@ -20,6 +20,9 @@
 #                     --preset); repeating one of these on the command line is a
 #                     no-op rather than a duplicate mount
 #   env             - KEY=VALUE pairs injected into every run (same as --env)
+#   volume          - host paths mounted on every run (same as --volume); a bare
+#                     path is mounted at the same absolute path in the container,
+#                     or use host:container to set the destination
 #   no-cache        - always rebuild the image            (true | false)
 #   verbose         - always pass VERBOSE=1 into the container (true | false)
 #   quiet           - always suppress image build output  (true | false)
@@ -40,6 +43,8 @@
 #   - jira
 # env:
 #   - RUST_LOG=debug
+# volume:
+#   - ~/.some-extra-dir
 # no-cache: false
 # verbose: false
 # quiet: false

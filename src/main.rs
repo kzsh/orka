@@ -220,6 +220,16 @@ fn run() -> Result<(), String> {
         env_vars.push((key.to_string(), expand::expand_value(val_raw)));
     }
 
+    for raw in &cli.volume {
+        let (host_real, container) = resolve_volume_spec(raw)?;
+        // Container engines reject two mounts at the same destination, and the
+        // working directory or a preset may already cover this path.
+        if volumes.iter().any(|(_, dest)| *dest == container) {
+            continue;
+        }
+        volumes.push((host_real, container));
+    }
+
     // Compute shadow mounts from any .orkashadow files found in mounted
     // directories.  _shadow_tmp holds the temp dir containing the empty shadow
     // source file and must stay alive until the container exits.  None means
@@ -322,6 +332,39 @@ fn select_scratchpad(home: &str, xdg_data_home: Option<&str>) -> Result<String, 
         ));
     }
     scratchpad::pick(&names, "scratchpad> ")?.ok_or_else(|| "no scratchpad selected".to_string())
+}
+
+/// Resolve a `--volume` argument into a `(host, container)` pair.
+///
+/// `HOST:CONTAINER` sets both sides explicitly; a bare path is mounted at the
+/// same absolute path it has on the host.  The host side is canonicalized so
+/// the engine receives a real path, while the container side keeps the
+/// uncanonicalized absolute path, so a symlinked source still appears where
+/// the user expects it.
+fn resolve_volume_spec(raw: &str) -> Result<(String, String), String> {
+    let (host_raw, container_raw) = split_once_colon(raw);
+    let host = expand::expand_tilde(host_raw);
+    let host_real = fs::canonicalize(&host)
+        .map_err(|e| format!("--volume: cannot resolve {host}: {e}"))?
+        .to_string_lossy()
+        .to_string();
+
+    let container = if container_raw == host_raw {
+        std::path::absolute(&host)
+            .map_err(|e| format!("--volume: cannot resolve {host}: {e}"))?
+            .to_string_lossy()
+            .to_string()
+    } else {
+        let container = expand::expand_tilde(container_raw);
+        if !Path::new(&container).is_absolute() {
+            return Err(format!(
+                "--volume: container path must be absolute: {container}"
+            ));
+        }
+        container
+    };
+
+    Ok((host_real, container))
 }
 
 /// Resolve a `--file` argument to an absolute path string ready to pass to the container engine.
@@ -433,6 +476,11 @@ fn merge_defaults(cli: &mut Cli, matches: &clap::ArgMatches, defaults: &config::
         let mut merged = env.clone();
         merged.append(&mut cli.env);
         cli.env = merged;
+    }
+    if let Some(ref volume) = defaults.volume {
+        let mut merged = volume.clone();
+        merged.append(&mut cli.volume);
+        cli.volume = merged;
     }
 
     // Boolean flags can only be turned on from the command line, so a config
@@ -669,6 +717,43 @@ mod tests {
         assert!(s.contains("not be persisted"));
     }
 
+    #[test]
+    fn volume_spec_bare_path_mounts_at_same_path() {
+        let tmp = std::env::temp_dir().join("orka-volume-spec-bare");
+        fs::create_dir_all(&tmp).unwrap();
+        let path = tmp.to_string_lossy().to_string();
+        let (host, container) = resolve_volume_spec(&path).unwrap();
+        assert_eq!(container, path);
+        assert_eq!(host, fs::canonicalize(&path).unwrap().to_string_lossy());
+        fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    #[test]
+    fn volume_spec_explicit_container_path() {
+        let tmp = std::env::temp_dir().join("orka-volume-spec-explicit");
+        fs::create_dir_all(&tmp).unwrap();
+        let spec = format!("{}:/mnt/elsewhere", tmp.display());
+        let (_, container) = resolve_volume_spec(&spec).unwrap();
+        assert_eq!(container, "/mnt/elsewhere");
+        fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    #[test]
+    fn volume_spec_rejects_relative_container_path() {
+        let tmp = std::env::temp_dir().join("orka-volume-spec-relative");
+        fs::create_dir_all(&tmp).unwrap();
+        let spec = format!("{}:elsewhere", tmp.display());
+        let err = resolve_volume_spec(&spec).unwrap_err();
+        assert!(err.contains("must be absolute"), "{err}");
+        fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    #[test]
+    fn volume_spec_rejects_missing_host_path() {
+        let err = resolve_volume_spec("/definitely/not/here/orka").unwrap_err();
+        assert!(err.contains("cannot resolve"), "{err}");
+    }
+
     /// Build a `Cli` plus its `ArgMatches` the same way `run()` does.
     fn parse_cli(argv: &[&str]) -> (Cli, clap::ArgMatches) {
         let matches = Cli::command().try_get_matches_from(argv).unwrap();
@@ -716,15 +801,19 @@ mod tests {
 
     #[test]
     fn merge_defaults_appends_list_values_before_cli_ones() {
-        let (mut cli, matches) = parse_cli(&["orka", "--preset", "go", "--env", "B=2"]);
+        let (mut cli, matches) = parse_cli(&[
+            "orka", "--preset", "go", "--env", "B=2", "--volume", "/b",
+        ]);
         let defaults = config::Defaults {
             preset: Some(vec!["rust".to_string()]),
             env: Some(vec!["A=1".to_string()]),
+            volume: Some(vec!["/a".to_string()]),
             ..Default::default()
         };
         merge_defaults(&mut cli, &matches, &defaults);
         assert_eq!(cli.preset, vec!["rust".to_string(), "go".to_string()]);
         assert_eq!(cli.env, vec!["A=1".to_string(), "B=2".to_string()]);
+        assert_eq!(cli.volume, vec!["/a".to_string(), "/b".to_string()]);
     }
 
     #[test]

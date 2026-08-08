@@ -20,6 +20,7 @@ orka [OPTIONS] [CONTAINER_ARGS]...
 | `--runtime <RUNTIME>` | Agent runtime to use: `pi` (default), `claude`, or `codex`. |
 | `--preset <NAME>` | Load volumes and env vars from a named preset in `~/.config/orka/environments.yaml`. Use `--preset list` to print available presets. |
 | `--env KEY=VALUE` | Inject an env var into the container. Repeatable. |
+| `--volume PATH[:CONTAINER_PATH]` | Mount an extra host path. A bare path is mounted at the same absolute path inside the container. Repeatable. |
 | `--file` / `-f <FILE>` | Mount a specific file instead of the CWD. Repeatable. |
 | `--harness-version` / `-v <VER>` | Install a specific agent harness version instead of `latest`. Applies to `--runtime pi` only. |
 | `--no-browser` | Skip installing agent-browser and Chromium. Applies to `--runtime pi` only. |

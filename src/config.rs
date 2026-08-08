@@ -36,6 +36,8 @@ pub struct Defaults {
     pub preset: Option<Vec<String>>,
     /// Env vars injected on every run, as if passed with `--env`.
     pub env: Option<Vec<String>>,
+    /// Paths mounted on every run, as if passed with `--volume`.
+    pub volume: Option<Vec<String>>,
     /// Always rebuild the image, as if `--no-cache` were passed.
     pub no_cache: Option<bool>,
     /// Always pass `VERBOSE=1` into the container, as if `--verbose`.

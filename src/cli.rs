@@ -83,6 +83,12 @@ pub struct Cli {
     #[arg(long, value_name = "KEY=VALUE")]
     pub env: Vec<String>,
 
+    /// Mount an extra host path into the container. Repeatable.
+    /// Given a bare path it is mounted at the same absolute path inside the
+    /// container; `HOST:CONTAINER` sets the container path explicitly.
+    #[arg(long, value_name = "PATH[:CONTAINER_PATH]")]
+    pub volume: Vec<String>,
+
     /// Force a rebuild of the agent image, ignoring the layer cache.
     /// The base image (apt deps) is always built with cache to keep rebuilds fast.
     #[arg(long)]
