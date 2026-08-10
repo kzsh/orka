@@ -808,6 +808,18 @@ mod tests {
         }
     }
 
+    /// `scratch` is an alias for `scratchpad`.
+    #[test]
+    fn scratch_is_an_alias_for_scratchpad() {
+        let (cli, _) = parse_cli(&["orka", "scratch", "foobar"]);
+        match cli.command {
+            Some(Commands::Scratchpad { ref name, .. }) => {
+                assert_eq!(name.as_deref(), Some("foobar"))
+            }
+            ref other => panic!("expected scratchpad, got {other:?}"),
+        }
+    }
+
     /// A global flag may also sit between the subcommand and its positional.
     #[test]
     fn global_flags_parse_between_subcommand_and_positional() {

@@ -87,7 +87,7 @@ Every flag above is global: it can be given before or after a subcommand, so `or
 | `orka config init` | Write default config files to `~/.config/orka/`. Skips any file that already exists. |
 | `orka config path` | Print the paths orka reads configuration from. |
 | `orka config completions <SHELL>` | Print a shell completion script for `bash`, `zsh`, `fish`, `elvish`, or `powershell`. |
-| `orka scratchpad [NAME]` | Use `~/.local/share/orka/scratch/<NAME>` as the workdir, creating it if needed. Without `NAME`, select an existing scratchpad interactively. |
+| `orka scratchpad [NAME]` (alias `orka scratch`) | Use `~/.local/share/orka/scratch/<NAME>` as the workdir, creating it if needed. Without `NAME`, select an existing scratchpad interactively. |
 | `orka scratchpad --list` | Print existing scratchpad names and exit. |
 | `orka tmp` | Use a fresh `mktemp -d` directory as the workdir. It persists after the container exits. |
 

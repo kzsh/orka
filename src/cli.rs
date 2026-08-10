@@ -139,6 +139,7 @@ pub enum Commands {
     ///
     /// Without NAME, existing scratchpads are listed in an interactive
     /// fuzzy selector.
+    #[command(visible_alias = "scratch")]
     Scratchpad {
         /// Scratchpad name. Omit to choose one interactively.
         #[arg(value_name = "NAME")]
