@@ -120,9 +120,6 @@ fn write_build_context() -> Result<TempDir, String> {
 /// is only built when it is absent or when `--no-cache` is passed, because
 /// its content changes rarely and rebuilding it is slow.
 pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
-    let ctx;
-    let ctx_path_owned;
-
     let base_ref = format!("{BASE_CONTAINER_NAME}:latest");
     let uid = current_uid();
     let gid = current_gid();
@@ -149,45 +146,30 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
         Harness::Claude => format!("{CLAUDE_CONTAINER_NAME}:latest"),
         Harness::Codex => format!("{CODEX_CONTAINER_NAME}:latest"),
     };
-    let need_main = true;
 
-    // Only write the build context when at least one image needs building.
-    let base_build;
-    let main_build;
-    if need_base || need_main {
-        ctx = write_build_context()?;
-        ctx_path_owned = ctx
-            .path()
-            .to_str()
-            .ok_or_else(|| "temp build context path contains non-UTF-8 characters".to_string())?
-            .to_string();
-        let ctx_path = &ctx_path_owned;
+    // The harness image is rebuilt on every run, so the build context is always
+    // needed.  `ctx` owns the temp directory and must outlive every command that
+    // refers to its path.
+    let ctx = write_build_context()?;
+    let ctx_path = ctx
+        .path()
+        .to_str()
+        .ok_or_else(|| "temp build context path contains non-UTF-8 characters".to_string())?
+        .to_string();
 
-        base_build = if need_base {
-            Some(build_base_command(&base_ref, ctx_path, cfg))
-        } else {
-            None
-        };
-        main_build = if need_main {
-            let cmd = match cfg.harness {
-                Harness::Pi => {
-                    build_pi_main_command(&main_ref, &base_ref, &uname, uid, gid, ctx_path, cfg)
-                }
-                Harness::Claude => {
-                    build_claude_main_command(&main_ref, &base_ref, &uname, uid, gid, ctx_path, cfg)
-                }
-                Harness::Codex => {
-                    build_codex_main_command(&main_ref, &base_ref, &uname, uid, gid, ctx_path, cfg)
-                }
-            };
-            Some(cmd)
-        } else {
-            None
-        };
-    } else {
-        base_build = None;
-        main_build = None;
-    }
+    let base_build = need_base.then(|| build_base_command(&base_ref, &ctx_path, cfg));
+
+    let main_build = match cfg.harness {
+        Harness::Pi => {
+            build_pi_main_command(&main_ref, &base_ref, &uname, uid, gid, &ctx_path, cfg)
+        }
+        Harness::Claude => {
+            build_claude_main_command(&main_ref, &base_ref, &uname, uid, gid, &ctx_path, cfg)
+        }
+        Harness::Codex => {
+            build_codex_main_command(&main_ref, &base_ref, &uname, uid, gid, &ctx_path, cfg)
+        }
+    };
 
     let caps = EngineCapabilities::detect(&cfg.engine_binary, cfg.backend);
 
@@ -203,11 +185,7 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
         } else {
             println!("[DRY_RUN] base image build: skipped (image exists)");
         }
-        if let Some(ref cmd) = main_build {
-            print_dry_run("main image build", cmd);
-        } else {
-            println!("[DRY_RUN] main image build: skipped (image exists)");
-        }
+        print_dry_run("main image build", &main_build);
         print_dry_run("container run", &run_cmd);
         return Ok(());
     }
@@ -224,9 +202,7 @@ pub fn build_and_run(cfg: &RunConfig) -> Result<(), String> {
     if let Some(ref cmd) = base_build {
         exec(cmd)?;
     }
-    if let Some(ref cmd) = main_build {
-        exec(cmd)?;
-    }
+    exec(&main_build)?;
     exec(&run_cmd)?;
 
     Ok(())
