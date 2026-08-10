@@ -925,7 +925,9 @@ mod tests {
 
         match harness {
             Harness::Pi => run_pi_command_args("orka:latest", 1000, 1000, caps, &cfg),
-            Harness::Claude => run_claude_command_args("orka-claude:latest", 1000, 1000, caps, &cfg),
+            Harness::Claude => {
+                run_claude_command_args("orka-claude:latest", 1000, 1000, caps, &cfg)
+            }
             Harness::Codex => run_codex_command_args("orka-codex:latest", 1000, 1000, caps, &cfg),
         }
         .unwrap()
