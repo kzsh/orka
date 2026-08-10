@@ -11,6 +11,8 @@
 | `orka --volume ~/.some-extra-dir` | `volume: [~/.some-extra-dir]` |
 | `orka --volume ~/data:/mnt/data` | `volume: [~/data:/mnt/data]` |
 | `orka scratchpad research` | |
+| `orka --preset linear --preset gh scratchpad research` | |
+| `orka scratchpad research --preset linear --preset gh` | |
 | `orka scratchpad` (interactive picker) | |
 | `orka scratchpad --list` | |
 | `orka tmp` | |

@@ -78,6 +78,8 @@ orka scratchpad
 | `--verbose` | Pass `VERBOSE=1` into the container environment. |
 | `--print-license` | Print the license text and exit. |
 
+Every flag above is global: it can be given before or after a subcommand, so `orka --preset gh scratchpad foo` and `orka scratchpad foo --preset gh` are equivalent. Each `--preset` takes exactly one name.
+
 ## Subcommands
 
 | Command | Description |

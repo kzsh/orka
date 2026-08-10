@@ -51,6 +51,20 @@ fn run() -> Result<(), String> {
         });
     let mut cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
 
+    // --preset list: print available preset names and exit.  Checked before the
+    // subcommand is acted on so it works in any argument position.
+    if cli.preset.iter().any(|p| p == "list") {
+        let cfg_path = config::config_path();
+        require_config_file(&cfg_path)?;
+        let cfg = config::load(&cfg_path)?;
+        let mut names: Vec<&str> = cfg.environments.keys().map(String::as_str).collect();
+        names.sort_unstable();
+        for name in names {
+            println!("{name}");
+        }
+        return Ok(());
+    }
+
     // `config` is self-contained: it neither reads config.yaml defaults nor
     // starts a container.  `scratchpad` and `tmp` only select the workdir and
     // then fall through to the normal run path.
@@ -101,19 +115,6 @@ fn run() -> Result<(), String> {
     let cwd = std::env::current_dir()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|_| home.clone());
-
-    // --preset list: print available preset names and exit.
-    if cli.preset.iter().any(|p| p == "list") {
-        let cfg_path = config::config_path();
-        require_config_file(&cfg_path)?;
-        let cfg = config::load(&cfg_path)?;
-        let mut names: Vec<&str> = cfg.environments.keys().map(String::as_str).collect();
-        names.sort_unstable();
-        for name in names {
-            println!("{name}");
-        }
-        return Ok(());
-    }
 
     // Base volumes: a single file (when --file is given), the current directory
     // (when not running from $HOME), or nothing (when CWD is $HOME).
@@ -761,6 +762,65 @@ mod tests {
         (cli, matches)
     }
 
+    /// Repeated `--preset` takes exactly one value per occurrence; the words
+    /// after it belong to the subcommand.
+    #[test]
+    fn preset_does_not_consume_the_subcommand() {
+        let (cli, _) = parse_cli(&[
+            "orka",
+            "--preset",
+            "linear",
+            "--preset",
+            "gh",
+            "scratchpad",
+            "foobar",
+        ]);
+        assert_eq!(cli.preset, vec!["linear".to_string(), "gh".to_string()]);
+        match cli.command {
+            Some(Commands::Scratchpad { ref name, list }) => {
+                assert_eq!(name.as_deref(), Some("foobar"));
+                assert!(!list);
+            }
+            ref other => panic!("expected scratchpad, got {other:?}"),
+        }
+    }
+
+    /// Top-level flags are global, so they parse after the subcommand too.
+    #[test]
+    fn global_flags_parse_after_the_subcommand() {
+        let (cli, _) = parse_cli(&[
+            "orka",
+            "scratchpad",
+            "foobar",
+            "--preset",
+            "linear",
+            "--preset",
+            "gh",
+            "--dry-run",
+        ]);
+        assert_eq!(cli.preset, vec!["linear".to_string(), "gh".to_string()]);
+        assert!(cli.dry_run);
+        match cli.command {
+            Some(Commands::Scratchpad { ref name, .. }) => {
+                assert_eq!(name.as_deref(), Some("foobar"))
+            }
+            ref other => panic!("expected scratchpad, got {other:?}"),
+        }
+    }
+
+    /// A global flag may also sit between the subcommand and its positional.
+    #[test]
+    fn global_flags_parse_between_subcommand_and_positional() {
+        let (cli, _) = parse_cli(&["orka", "scratchpad", "--preset", "gh", "foobar"]);
+        assert_eq!(cli.preset, vec!["gh".to_string()]);
+        match cli.command {
+            Some(Commands::Scratchpad { ref name, .. }) => {
+                assert_eq!(name.as_deref(), Some("foobar"))
+            }
+            ref other => panic!("expected scratchpad, got {other:?}"),
+        }
+    }
+
     #[test]
     fn merge_defaults_fills_unset_scalars() {
         let (mut cli, matches) = parse_cli(&["orka"]);
@@ -801,9 +861,8 @@ mod tests {
 
     #[test]
     fn merge_defaults_appends_list_values_before_cli_ones() {
-        let (mut cli, matches) = parse_cli(&[
-            "orka", "--preset", "go", "--env", "B=2", "--volume", "/b",
-        ]);
+        let (mut cli, matches) =
+            parse_cli(&["orka", "--preset", "go", "--env", "B=2", "--volume", "/b"]);
         let defaults = config::Defaults {
             preset: Some(vec!["rust".to_string()]),
             env: Some(vec!["A=1".to_string()]),

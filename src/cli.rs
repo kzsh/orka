@@ -67,62 +67,62 @@ pub struct Cli {
     /// Isolation backend.  Container engines (docker/podman/container) build an OCI image;
     /// bubblewrap sandboxes the host filesystem directly (Linux only, no image
     /// build required).  Support for `container` is alpha.
-    #[arg(long, value_enum, default_value = "docker")]
+    #[arg(long, value_enum, default_value = "docker", global = true)]
     pub engine: Backend,
 
     /// Agent harness to use inside the container.
-    #[arg(long, value_enum, default_value = "pi")]
+    #[arg(long, value_enum, default_value = "pi", global = true)]
     pub harness: Harness,
 
     /// Select a named preset from environments.yaml. Repeatable.
     /// Use `--preset list` to print available preset names.
-    #[arg(long, value_name = "NAME")]
+    #[arg(long, value_name = "NAME", global = true)]
     pub preset: Vec<String>,
 
     /// Inject an arbitrary env var into the container (KEY=VALUE). Repeatable.
-    #[arg(long, value_name = "KEY=VALUE")]
+    #[arg(long, value_name = "KEY=VALUE", global = true)]
     pub env: Vec<String>,
 
     /// Mount an extra host path into the container. Repeatable.
     /// Given a bare path it is mounted at the same absolute path inside the
     /// container; `HOST:CONTAINER` sets the container path explicitly.
-    #[arg(long, value_name = "PATH[:CONTAINER_PATH]")]
+    #[arg(long, value_name = "PATH[:CONTAINER_PATH]", global = true)]
     pub volume: Vec<String>,
 
     /// Force a rebuild of the agent image, ignoring the layer cache.
     /// The base image (apt deps) is always built with cache to keep rebuilds fast.
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub no_cache: bool,
 
     /// Print the commands to be run instead of executing them.
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub dry_run: bool,
 
     /// Pass VERBOSE=1 into the container environment.
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub verbose: bool,
 
     /// Suppress image build output.
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub quiet: bool,
 
     /// Set the LLM agent version to install (default: latest).
     /// Applies to --harness pi only.
-    #[arg(long, short = 'v', value_name = "VERSION")]
+    #[arg(long, short = 'v', value_name = "VERSION", global = true)]
     pub harness_version: Option<String>,
 
     /// Keep the container after it exits instead of removing it automatically.
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub preserve_container: bool,
 
     /// Mount only specific files into the container instead of the entire working
     /// directory. Repeatable. Each file is mounted at the same absolute path it
     /// has on the host. The container workdir is set to the invoking directory.
-    #[arg(long, short = 'f', value_name = "FILE")]
+    #[arg(long, short = 'f', value_name = "FILE", global = true)]
     pub file: Vec<std::path::PathBuf>,
 
     /// Print the license text and exit.
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub print_license: bool,
 }
 

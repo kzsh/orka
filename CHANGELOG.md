@@ -2,6 +2,8 @@
 
 ## latest
 
+- Top-level flags are now global and accepted in any position, before or after a subcommand. `orka scratchpad foo --preset gh --dry-run` previously failed with `unexpected argument '--preset' found`; it now behaves the same as `orka --preset gh --dry-run scratchpad foo`. `--preset list` is likewise handled regardless of position.
+
 - orka is now open source under the MIT license (`LICENSE`), replacing the previous binary-only terms. `orka --print-license` prints the MIT text followed by `THIRD_PARTY_LICENSES`. The full source, documentation, and config templates live in one repository; topic pages moved under `docs/`.
 
 - `--volume <PATH>` mounts an extra host path into the container, repeatable. A bare path is mounted at the same absolute path it has on the host; `HOST:CONTAINER` sets the destination explicitly. Paths already mounted (the working directory, or a preset volume) are skipped rather than mounted twice. `config.yaml` accepts a matching `volume` list applied to every run.
