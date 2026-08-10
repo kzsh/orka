@@ -95,18 +95,4 @@ if [[ "$DO_RELEASE" == true ]]; then
     fi
 fi
 
-DATE="$(date -u +%Y-%m-%d)"
-README="public-repo/README.md"
-sed -i "s|^\*\*Latest:\*\*.*|**Latest:** $DATE|" "$README"
-
-cp PUBLIC-LICENSE public-repo/LICENSE
-
-if [[ "$DO_RELEASE" == true ]]; then
-    COMMIT_MSG="Release $TAG"
-else
-    COMMIT_MSG="Update latest ($DATE)"
-fi
-
-(cd public-repo && git add README.md LICENSE && git diff --cached --quiet || git commit -m "$COMMIT_MSG" && git push)
-
 echo "Published: https://github.com/$REPO/releases/tag/$TAG"

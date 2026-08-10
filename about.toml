@@ -14,6 +14,6 @@ accepted = [
 ]
 
 # orka is not published to crates.io (publish = false in Cargo.toml).
-# Exclude it from third-party license output; PUBLIC-LICENSE covers it.
+# Exclude it from third-party license output; LICENSE covers it.
 private = { ignore = true }
 

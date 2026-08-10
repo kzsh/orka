@@ -89,8 +89,8 @@ command -v rsync >/dev/null || {
     exit 1
 }
 
-# Excludes keep the transfer to source only: no history, no build output, and
-# none of the sibling checkouts that live inside the working tree.  target/ is
+# Excludes keep the transfer to source only: no history and no build output.
+# target/ is
 # excluded but not deleted remotely, which is what makes incremental builds
 # work; --delete removes source files that have gone away locally.
 echo "==> syncing to $HOST:$REMOTE_DIR"
@@ -99,7 +99,6 @@ rsync -az --delete \
     --exclude=.envrc \
     --exclude=target \
     --exclude=dist \
-    --exclude=public-repo \
     --exclude=local-reference \
     ./ "$HOST:$REMOTE_DIR/"
 

@@ -19,14 +19,6 @@
 #   orka --env FOO=bar      # inject an arbitrary env var
 
 environments:
-  xtool:
-    volumes:
-      - ~/.config/xtool:~/.config/xtool
-      - /usr/local/bin:~/.local/bin:ro
-      - ~/.local/share/swiftly:~/.local/share/swiftly
-      - /lib:/lib
-      - /usr/lib:/usr/lib
-
   bun:
     volumes:
       - ~/.bun/:~/.bun/
@@ -54,19 +46,6 @@ environments:
       - CARGO_HOME=~/.cargo
       - RUSTUP_HOME=~/.rustup
 
-  godot:
-    volumes:
-      - ~/packages/godot:~/packages/godot
-      - ~/.config/godot:~/.config/godot
-      - ~/.local/share/godot:~/.local/share/godot
-      - /lib:/lib
-      - /usr/lib:/usr/lib
-      - /usr/share/X11/xkb:/usr/share/X11/xkb
-
-  steam:
-    volumes:
-      - ~/.steam/steam/steamapps/common:~/.steam/steam/steamapps/common
-
   uv:
     volumes:
       - ~/.local/bin/uv:~/.local/bin/uv:ro
@@ -81,12 +60,3 @@ environments:
       - ~/.cache/uv:~/.cache/uv
       - ~/.local/share/uv/tools:~/.local/share/uv/tools
 
-  ue5:
-    volumes:
-      - ~/UnrealEngine:~/UnrealEngine
-      - ~/packages/ue5:~/packages/ue5
-      - /usr/bin/:/usr/bin
-      - /usr/share/doc/dotnet-sdk-9.0:/usr/share/doc/dotnet-sdk-9.0
-      - /usr/share/dotnet:/usr/share/dotnet
-      - /lib:/lib
-      - /usr/lib:/usr/lib

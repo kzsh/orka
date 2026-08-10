@@ -15,7 +15,7 @@ mod shadow;
 use cli::{Cli, Commands, ConfigCommand};
 use docker::RunConfig;
 
-const LICENSE: &str = include_str!("../PUBLIC-LICENSE");
+const LICENSE: &str = include_str!("../LICENSE");
 const THIRD_PARTY_LICENSES: &str = include_str!("../THIRD_PARTY_LICENSES");
 
 const TEMPLATE_CONFIG: &str = include_str!("../config/config.yaml");
