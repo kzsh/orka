@@ -2,6 +2,7 @@
 
 ## latest
 
+- `THIRD_PARTY_LICENSES` regenerated. It was missing `clap_complete`, `serde_ignored`, `itoa`, and `ryu`, all of which are linked into the released binaries. The license texts printed by `--print-license` are no longer HTML-escaped, and the summary at the top lists each license with the number of crates using it instead of an empty line per license.
 - `orka scratch` is an alias for `orka scratchpad`.
 - Top-level flags are now global and accepted in any position, before or after a subcommand. `orka scratchpad foo --preset gh --dry-run` previously failed with `unexpected argument '--preset' found`; it now behaves the same as `orka --preset gh --dry-run scratchpad foo`. `--preset list` is likewise handled regardless of position.
 

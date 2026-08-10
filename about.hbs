@@ -5,10 +5,10 @@ This binary incorporates the following open source components. Each component
 retains its original license and copyright. The full license text for each
 appears below.
 
-Components
-----------
+Components, by license
+----------------------
 {{#each overview}}
-  {{name}} {{version}} — {{license}}
+  {{{name}}} ({{{id}}}): {{count}}
 {{/each}}
 
 License Texts
@@ -17,8 +17,8 @@ License Texts
 
 ================================================================================
 License: {{id}}
-Used by: {{#each used_by}}{{crate.name}} {{crate.version}}{{#unless @last}}, {{/unless}}{{/each}}
+Used by: {{#each used_by}}{{{crate.name}}} {{crate.version}}{{#unless @last}}, {{/unless}}{{/each}}
 ================================================================================
 
-{{text}}
+{{{text}}}
 {{/each}}
